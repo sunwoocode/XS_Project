@@ -3,27 +3,39 @@ using UnityEngine;
 [ExecuteAlways]
 public sealed class FieldGenerator : MonoBehaviour
 {
+    public const float CellSizeMeters = 1f;
+
     private const string SurfaceName = "FieldSurface";
 
     private static readonly int GridSizeId = Shader.PropertyToID("_GridSize");
     private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
     private static readonly int LineColorId = Shader.PropertyToID("_LineColor");
     private static readonly int LineWidthId = Shader.PropertyToID("_LineWidth");
+    private static readonly int HighlightCellId = Shader.PropertyToID("_HighlightCell");
+    private static readonly int HighlightColorId = Shader.PropertyToID("_HighlightColor");
+    private static readonly int MovementColorId = Shader.PropertyToID("_MovementColor");
+    private static readonly int MovementRangeId = Shader.PropertyToID("_MovementRange");
 
     [Header("Grid")]
     [SerializeField, Min(1)] private int width = 10;
     [SerializeField, Min(1)] private int depth = 10;
-    [SerializeField, Min(0.1f)] private float tileSize = 1f;
     [SerializeField, Min(0.02f)] private float tileHeight = 0.16f;
 
     [Header("Appearance")]
     [SerializeField] private Color baseColor = new(0.22f, 0.50f, 0.27f, 1f);
     [SerializeField] private Color lineColor = new(0.68f, 0.92f, 0.70f, 1f);
+    [SerializeField] private Color highlightColor = new(1f, 0.72f, 0.18f, 1f);
+    [SerializeField] private Color movementColor = new(0.18f, 0.62f, 0.95f, 1f);
     [SerializeField, Range(0.005f, 0.15f)] private float lineWidth = 0.035f;
     [SerializeField] private Material gridMaterial;
 
     private Material runtimeMaterial;
     private MaterialPropertyBlock propertyBlock;
+    private Vector2Int highlightedCell = new(-1, -1);
+    private bool highlightEnabled;
+    private int movementRange;
+
+    public float TileSizeMeters => CellSizeMeters;
 
 #if UNITY_EDITOR
     private bool regenerationQueued;
@@ -45,7 +57,6 @@ public sealed class FieldGenerator : MonoBehaviour
     {
         width = Mathf.Max(1, width);
         depth = Mathf.Max(1, depth);
-        tileSize = Mathf.Max(0.1f, tileSize);
         tileHeight = Mathf.Max(0.02f, tileHeight);
         lineWidth = Mathf.Clamp(lineWidth, 0.005f, 0.15f);
 
@@ -77,6 +88,73 @@ public sealed class FieldGenerator : MonoBehaviour
     public void SetGridMaterial(Material material)
     {
         gridMaterial = material;
+        UpdateSurface();
+    }
+
+    public Vector3 GetCellCenterWorld(int column, int row, float surfaceOffset = 0f)
+    {
+        column = Mathf.Clamp(column, 0, width - 1);
+        row = Mathf.Clamp(row, 0, depth - 1);
+
+        float localX = (column - width * 0.5f + 0.5f) * CellSizeMeters;
+        float localZ = (row - depth * 0.5f + 0.5f) * CellSizeMeters;
+        return transform.TransformPoint(new Vector3(localX, surfaceOffset, localZ));
+    }
+
+    public bool TryGetCell(Vector3 worldPosition, out Vector2Int cell)
+    {
+        Vector3 localPosition = transform.InverseTransformPoint(worldPosition);
+        float halfWidth = width * CellSizeMeters * 0.5f;
+        float halfDepth = depth * CellSizeMeters * 0.5f;
+        int column = Mathf.FloorToInt((localPosition.x + halfWidth) / CellSizeMeters);
+        int row = Mathf.FloorToInt((localPosition.z + halfDepth) / CellSizeMeters);
+
+        if (column < 0 || column >= width || row < 0 || row >= depth)
+        {
+            cell = new Vector2Int(-1, -1);
+            return false;
+        }
+
+        cell = new Vector2Int(column, row);
+        return true;
+    }
+
+    public bool ShowMovementRange(Vector3 unitWorldPosition, int maxDistance)
+    {
+        if (!TryGetCell(unitWorldPosition, out Vector2Int unitCell))
+        {
+            ClearHighlights();
+            return false;
+        }
+
+        highlightedCell = unitCell;
+        highlightEnabled = true;
+        movementRange = Mathf.Max(0, maxDistance);
+        UpdateSurface();
+        return true;
+    }
+
+    public bool IsCellInMovementRange(Vector2Int cell)
+    {
+        if (!highlightEnabled || cell.x < 0 || cell.x >= width || cell.y < 0 || cell.y >= depth)
+        {
+            return false;
+        }
+
+        int distance = Mathf.Abs(cell.x - highlightedCell.x) + Mathf.Abs(cell.y - highlightedCell.y);
+        return distance > 0 && distance <= movementRange;
+    }
+
+    public bool IsFieldCollider(Collider targetCollider)
+    {
+        return targetCollider != null && targetCollider.transform.IsChildOf(transform);
+    }
+
+    public void ClearHighlights()
+    {
+        highlightEnabled = false;
+        highlightedCell = new Vector2Int(-1, -1);
+        movementRange = 0;
         UpdateSurface();
     }
 
@@ -121,7 +199,7 @@ public sealed class FieldGenerator : MonoBehaviour
     {
         surface.transform.localPosition = new Vector3(0f, -tileHeight * 0.5f, 0f);
         surface.transform.localRotation = Quaternion.identity;
-        surface.transform.localScale = new Vector3(width * tileSize, tileHeight, depth * tileSize);
+        surface.transform.localScale = new Vector3(width * CellSizeMeters, tileHeight, depth * CellSizeMeters);
 
         Renderer surfaceRenderer = surface.GetComponent<Renderer>();
         surfaceRenderer.sharedMaterial = ResolveMaterial();
@@ -131,7 +209,13 @@ public sealed class FieldGenerator : MonoBehaviour
         propertyBlock.SetVector(GridSizeId, new Vector4(width, depth, 0f, 0f));
         propertyBlock.SetColor(BaseColorId, baseColor);
         propertyBlock.SetColor(LineColorId, lineColor);
+        propertyBlock.SetColor(HighlightColorId, highlightColor);
+        propertyBlock.SetColor(MovementColorId, movementColor);
         propertyBlock.SetFloat(LineWidthId, lineWidth);
+        propertyBlock.SetFloat(MovementRangeId, movementRange);
+        propertyBlock.SetVector(
+            HighlightCellId,
+            new Vector4(highlightedCell.x, highlightedCell.y, highlightEnabled ? 1f : 0f, 0f));
         surfaceRenderer.SetPropertyBlock(propertyBlock);
     }
 

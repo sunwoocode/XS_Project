@@ -9,8 +9,9 @@ public static class FieldSceneSetup
     private const string ScenePath = "Assets/Scenes/SampleScene.unity";
     private const string MaterialFolder = "Assets/Materials";
     private const string MaterialPath = MaterialFolder + "/FieldGrid.mat";
+    private const string UnitMaterialPath = MaterialFolder + "/Unit.mat";
     private const string ShaderName = "XS Project/Field Grid";
-    private const string SessionKey = "XSProject.FieldSceneSetup.GridShaderV1.Completed";
+    private const string SessionKey = "XSProject.FieldSceneSetup.MetricPlayerV1.Completed";
 
     static FieldSceneSetup()
     {
@@ -50,13 +51,74 @@ public static class FieldSceneSetup
         generator.SetGridMaterial(gridMaterial);
         generator.GenerateField();
 
-        ConfigureCamera();
+        Camera camera = ConfigureCamera();
         ConfigureLight();
+        CreateUnit(generator, camera);
 
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveScene(scene);
         Selection.activeGameObject = field;
         Debug.Log("XS Project: single-surface 10x10 shader grid created in SampleScene.");
+    }
+
+    private static void CreateUnit(FieldGenerator field, Camera camera)
+    {
+        GameObject existingCapsule = GameObject.Find("Unit_Capsule");
+        if (existingCapsule != null)
+        {
+            Object.DestroyImmediate(existingCapsule);
+        }
+
+        GameObject existingPlayer = GameObject.Find("Unit_Player");
+        if (existingPlayer != null)
+        {
+            Object.DestroyImmediate(existingPlayer);
+        }
+
+        GameObject existingController = GameObject.Find("UnitSelectionController");
+        if (existingController != null)
+        {
+            Object.DestroyImmediate(existingController);
+        }
+
+        GameObject unit = new("Unit_Player");
+        unit.transform.position = field.GetCellCenterWorld(4, 4, 0f);
+        unit.transform.rotation = Quaternion.identity;
+        unit.transform.localScale = Vector3.one;
+        unit.AddComponent<GridUnit>();
+
+        CapsuleCollider unitCollider = unit.AddComponent<CapsuleCollider>();
+        unitCollider.height = GridUnit.HeightMeters;
+        unitCollider.radius = GridUnit.RadiusMeters;
+        unitCollider.center = new Vector3(0f, GridUnit.HeightMeters * 0.5f, 0f);
+        unitCollider.direction = 1;
+
+        GameObject visualRoot = new("VisualRoot");
+        visualRoot.transform.SetParent(unit.transform, false);
+        visualRoot.transform.localPosition = Vector3.zero;
+        visualRoot.transform.localRotation = Quaternion.identity;
+        visualRoot.transform.localScale = Vector3.one;
+
+        GameObject preview = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+        preview.name = "CapsulePreview";
+        preview.transform.SetParent(visualRoot.transform, false);
+        preview.transform.localPosition = new Vector3(0f, GridUnit.HeightMeters * 0.5f, 0f);
+        preview.transform.localRotation = Quaternion.identity;
+        preview.transform.localScale = new Vector3(
+            GridUnit.DiameterMeters,
+            GridUnit.HeightMeters * 0.5f,
+            GridUnit.DiameterMeters);
+        Object.DestroyImmediate(preview.GetComponent<Collider>());
+
+        Material unitMaterial = EnsureUnitMaterial();
+        if (unitMaterial != null)
+        {
+            preview.GetComponent<Renderer>().sharedMaterial = unitMaterial;
+        }
+
+        GameObject controllerObject = new("UnitSelectionController");
+        UnitSelectionController controller = controllerObject.AddComponent<UnitSelectionController>();
+        controller.Configure(field, camera);
     }
 
     private static Material EnsureGridMaterial()
@@ -88,7 +150,33 @@ public static class FieldSceneSetup
         return material;
     }
 
-    private static void ConfigureCamera()
+    private static Material EnsureUnitMaterial()
+    {
+        Material material = AssetDatabase.LoadAssetAtPath<Material>(UnitMaterialPath);
+        if (material != null)
+        {
+            return material;
+        }
+
+        Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+        if (shader == null)
+        {
+            Debug.LogError("Universal Render Pipeline/Lit shader was not found.");
+            return null;
+        }
+
+        material = new Material(shader)
+        {
+            name = "Unit"
+        };
+        material.SetColor("_BaseColor", new Color(0.16f, 0.48f, 0.92f, 1f));
+        material.SetFloat("_Smoothness", 0.28f);
+        AssetDatabase.CreateAsset(material, UnitMaterialPath);
+        AssetDatabase.SaveAssets();
+        return material;
+    }
+
+    private static Camera ConfigureCamera()
     {
         Camera camera = Camera.main;
         if (camera == null)
@@ -106,6 +194,7 @@ public static class FieldSceneSetup
         camera.farClipPlane = 100f;
         camera.clearFlags = CameraClearFlags.SolidColor;
         camera.backgroundColor = new Color(0.055f, 0.09f, 0.07f, 1f);
+        return camera;
     }
 
     private static void ConfigureLight()

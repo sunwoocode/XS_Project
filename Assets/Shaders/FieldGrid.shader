@@ -4,7 +4,11 @@ Shader "XS Project/Field Grid"
     {
         _BaseColor ("Base Color", Color) = (0.22, 0.50, 0.27, 1)
         _LineColor ("Grid Line Color", Color) = (0.68, 0.92, 0.70, 1)
+        _HighlightColor ("Selected Cell Color", Color) = (1.0, 0.72, 0.18, 1)
+        _MovementColor ("Movement Range Color", Color) = (0.18, 0.62, 0.95, 1)
         _GridSize ("Grid Size", Vector) = (10, 10, 0, 0)
+        _HighlightCell ("Highlighted Cell", Vector) = (-1, -1, 0, 0)
+        _MovementRange ("Movement Range", Float) = 0
         _LineWidth ("Line Width", Range(0.005, 0.15)) = 0.035
     }
 
@@ -49,7 +53,11 @@ Shader "XS Project/Field Grid"
             CBUFFER_START(UnityPerMaterial)
                 half4 _BaseColor;
                 half4 _LineColor;
+                half4 _HighlightColor;
+                half4 _MovementColor;
                 float4 _GridSize;
+                float4 _HighlightCell;
+                float _MovementRange;
                 float _LineWidth;
             CBUFFER_END
 
@@ -72,8 +80,23 @@ Shader "XS Project/Field Grid"
                 float antialiasing = max(fwidth(edgeDistance), 0.0001);
                 float gridLine = 1.0 - smoothstep(_LineWidth, _LineWidth + antialiasing, edgeDistance);
                 float topFace = step(0.99, input.normalOS.y);
+                float2 cellIndex = min(floor(uv * gridSize), gridSize - 1.0);
+                float cellDelta = max(
+                    abs(cellIndex.x - _HighlightCell.x),
+                    abs(cellIndex.y - _HighlightCell.y));
+                float selectedCell = (1.0 - step(0.5, cellDelta)) * _HighlightCell.z * topFace;
+                float manhattanDistance =
+                    abs(cellIndex.x - _HighlightCell.x) +
+                    abs(cellIndex.y - _HighlightCell.y);
+                float reachableCell =
+                    step(0.5, manhattanDistance) *
+                    (1.0 - step(_MovementRange + 0.5, manhattanDistance)) *
+                    _HighlightCell.z *
+                    topFace;
+                half4 surfaceColor = lerp(_BaseColor, _MovementColor, reachableCell);
+                surfaceColor = lerp(surfaceColor, _HighlightColor, selectedCell);
 
-                return lerp(_BaseColor, _LineColor, gridLine * topFace);
+                return lerp(surfaceColor, _LineColor, gridLine * topFace);
             }
             ENDHLSL
         }
