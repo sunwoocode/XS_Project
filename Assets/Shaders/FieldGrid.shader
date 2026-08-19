@@ -1,0 +1,83 @@
+Shader "XS Project/Field Grid"
+{
+    Properties
+    {
+        _BaseColor ("Base Color", Color) = (0.22, 0.50, 0.27, 1)
+        _LineColor ("Grid Line Color", Color) = (0.68, 0.92, 0.70, 1)
+        _GridSize ("Grid Size", Vector) = (10, 10, 0, 0)
+        _LineWidth ("Line Width", Range(0.005, 0.15)) = 0.035
+    }
+
+    SubShader
+    {
+        Tags
+        {
+            "RenderType" = "Opaque"
+            "Queue" = "Geometry"
+            "RenderPipeline" = "UniversalPipeline"
+        }
+
+        Pass
+        {
+            Name "ForwardUnlit"
+            Tags { "LightMode" = "UniversalForward" }
+
+            Cull Back
+            ZWrite On
+            ZTest LEqual
+
+            HLSLPROGRAM
+            #pragma vertex Vert
+            #pragma fragment Frag
+            #pragma target 3.5
+
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+
+            struct Attributes
+            {
+                float4 positionOS : POSITION;
+                float3 normalOS : NORMAL;
+            };
+
+            struct Varyings
+            {
+                float4 positionCS : SV_POSITION;
+                float3 positionOS : TEXCOORD0;
+                float3 normalOS : TEXCOORD1;
+            };
+
+            CBUFFER_START(UnityPerMaterial)
+                half4 _BaseColor;
+                half4 _LineColor;
+                float4 _GridSize;
+                float _LineWidth;
+            CBUFFER_END
+
+            Varyings Vert(Attributes input)
+            {
+                Varyings output;
+                output.positionCS = TransformObjectToHClip(input.positionOS.xyz);
+                output.positionOS = input.positionOS.xyz;
+                output.normalOS = input.normalOS;
+                return output;
+            }
+
+            half4 Frag(Varyings input) : SV_Target
+            {
+                float2 gridSize = max(_GridSize.xy, float2(1.0, 1.0));
+                float2 uv = saturate(input.positionOS.xz + 0.5);
+                float2 cellPosition = frac(uv * gridSize);
+                float2 distanceToEdge = min(cellPosition, 1.0 - cellPosition);
+                float edgeDistance = min(distanceToEdge.x, distanceToEdge.y);
+                float antialiasing = max(fwidth(edgeDistance), 0.0001);
+                float gridLine = 1.0 - smoothstep(_LineWidth, _LineWidth + antialiasing, edgeDistance);
+                float topFace = step(0.99, input.normalOS.y);
+
+                return lerp(_BaseColor, _LineColor, gridLine * topFace);
+            }
+            ENDHLSL
+        }
+    }
+
+    FallBack Off
+}
