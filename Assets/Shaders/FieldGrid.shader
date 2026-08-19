@@ -8,7 +8,7 @@ Shader "XS Project/Field Grid"
         _MovementColor ("Movement Range Color", Color) = (0.18, 0.62, 0.95, 1)
         _GridSize ("Grid Size", Vector) = (10, 10, 0, 0)
         _HighlightCell ("Highlighted Cell", Vector) = (-1, -1, 0, 0)
-        _MovementRange ("Movement Range", Float) = 0
+        _ReachabilityMap ("Reachability Map", 2D) = "black" {}
         _LineWidth ("Line Width", Range(0.005, 0.15)) = 0.035
     }
 
@@ -57,9 +57,11 @@ Shader "XS Project/Field Grid"
                 half4 _MovementColor;
                 float4 _GridSize;
                 float4 _HighlightCell;
-                float _MovementRange;
                 float _LineWidth;
             CBUFFER_END
+
+            TEXTURE2D(_ReachabilityMap);
+            SAMPLER(sampler_ReachabilityMap);
 
             Varyings Vert(Attributes input)
             {
@@ -85,14 +87,10 @@ Shader "XS Project/Field Grid"
                     abs(cellIndex.x - _HighlightCell.x),
                     abs(cellIndex.y - _HighlightCell.y));
                 float selectedCell = (1.0 - step(0.5, cellDelta)) * _HighlightCell.z * topFace;
-                float manhattanDistance =
-                    abs(cellIndex.x - _HighlightCell.x) +
-                    abs(cellIndex.y - _HighlightCell.y);
+                float2 reachabilityUv = (cellIndex + 0.5) / gridSize;
                 float reachableCell =
-                    step(0.5, manhattanDistance) *
-                    (1.0 - step(_MovementRange + 0.5, manhattanDistance)) *
-                    _HighlightCell.z *
-                    topFace;
+                    SAMPLE_TEXTURE2D(_ReachabilityMap, sampler_ReachabilityMap, reachabilityUv).r *
+                    _HighlightCell.z * topFace;
                 half4 surfaceColor = lerp(_BaseColor, _MovementColor, reachableCell);
                 surfaceColor = lerp(surfaceColor, _HighlightColor, selectedCell);
 

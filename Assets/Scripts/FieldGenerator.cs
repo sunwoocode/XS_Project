@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 [ExecuteAlways]
@@ -14,7 +16,15 @@ public sealed class FieldGenerator : MonoBehaviour
     private static readonly int HighlightCellId = Shader.PropertyToID("_HighlightCell");
     private static readonly int HighlightColorId = Shader.PropertyToID("_HighlightColor");
     private static readonly int MovementColorId = Shader.PropertyToID("_MovementColor");
-    private static readonly int MovementRangeId = Shader.PropertyToID("_MovementRange");
+    private static readonly int ReachabilityMapId = Shader.PropertyToID("_ReachabilityMap");
+
+    private static readonly Vector2Int[] CardinalDirections =
+    {
+        Vector2Int.up,
+        Vector2Int.right,
+        Vector2Int.down,
+        Vector2Int.left
+    };
 
     [Header("Grid")]
     [SerializeField, Min(1)] private int width = 10;
@@ -33,9 +43,13 @@ public sealed class FieldGenerator : MonoBehaviour
     private MaterialPropertyBlock propertyBlock;
     private Vector2Int highlightedCell = new(-1, -1);
     private bool highlightEnabled;
-    private int movementRange;
+    private bool[,] reachableCells;
+    private Vector2Int[,] previousCells;
+    private Texture2D reachabilityTexture;
 
     public float TileSizeMeters => CellSizeMeters;
+    public int Width => width;
+    public int Depth => depth;
 
 #if UNITY_EDITOR
     private bool regenerationQueued;
@@ -119,7 +133,15 @@ public sealed class FieldGenerator : MonoBehaviour
         return true;
     }
 
-    public bool ShowMovementRange(Vector3 unitWorldPosition, int maxDistance)
+    public bool IsValidCell(Vector2Int cell)
+    {
+        return cell.x >= 0 && cell.x < width && cell.y >= 0 && cell.y < depth;
+    }
+
+    public bool ShowMovementRange(
+        Vector3 unitWorldPosition,
+        int maxDistance,
+        IReadOnlyCollection<Vector2Int> blockedCells)
     {
         if (!TryGetCell(unitWorldPosition, out Vector2Int unitCell))
         {
@@ -129,20 +151,45 @@ public sealed class FieldGenerator : MonoBehaviour
 
         highlightedCell = unitCell;
         highlightEnabled = true;
-        movementRange = Mathf.Max(0, maxDistance);
+        BuildReachability(unitCell, Mathf.Max(0, maxDistance), blockedCells);
+        UpdateReachabilityTexture();
         UpdateSurface();
         return true;
     }
 
     public bool IsCellInMovementRange(Vector2Int cell)
     {
-        if (!highlightEnabled || cell.x < 0 || cell.x >= width || cell.y < 0 || cell.y >= depth)
+        if (!highlightEnabled || !IsValidCell(cell) || reachableCells == null)
         {
             return false;
         }
 
-        int distance = Mathf.Abs(cell.x - highlightedCell.x) + Mathf.Abs(cell.y - highlightedCell.y);
-        return distance > 0 && distance <= movementRange;
+        return reachableCells[cell.x, cell.y];
+    }
+
+    public bool TryBuildPath(Vector2Int targetCell, out List<Vector2Int> path)
+    {
+        path = new List<Vector2Int>();
+        if (!IsCellInMovementRange(targetCell) || previousCells == null)
+        {
+            return false;
+        }
+
+        Vector2Int current = targetCell;
+        int safetyLimit = width * depth;
+        while (current != highlightedCell && safetyLimit-- > 0)
+        {
+            path.Add(current);
+            current = previousCells[current.x, current.y];
+            if (!IsValidCell(current))
+            {
+                path.Clear();
+                return false;
+            }
+        }
+
+        path.Reverse();
+        return path.Count > 0;
     }
 
     public bool IsFieldCollider(Collider targetCollider)
@@ -154,7 +201,9 @@ public sealed class FieldGenerator : MonoBehaviour
     {
         highlightEnabled = false;
         highlightedCell = new Vector2Int(-1, -1);
-        movementRange = 0;
+        reachableCells = null;
+        previousCells = null;
+        UpdateReachabilityTexture();
         UpdateSurface();
     }
 
@@ -212,11 +261,122 @@ public sealed class FieldGenerator : MonoBehaviour
         propertyBlock.SetColor(HighlightColorId, highlightColor);
         propertyBlock.SetColor(MovementColorId, movementColor);
         propertyBlock.SetFloat(LineWidthId, lineWidth);
-        propertyBlock.SetFloat(MovementRangeId, movementRange);
+        EnsureReachabilityTexture();
+        propertyBlock.SetTexture(ReachabilityMapId, reachabilityTexture);
         propertyBlock.SetVector(
             HighlightCellId,
             new Vector4(highlightedCell.x, highlightedCell.y, highlightEnabled ? 1f : 0f, 0f));
         surfaceRenderer.SetPropertyBlock(propertyBlock);
+    }
+
+    private void BuildReachability(
+        Vector2Int startCell,
+        int maxDistance,
+        IReadOnlyCollection<Vector2Int> blockedCells)
+    {
+        reachableCells = new bool[width, depth];
+        previousCells = new Vector2Int[width, depth];
+        int[,] distances = new int[width, depth];
+        bool[,] blocked = new bool[width, depth];
+
+        for (int x = 0; x < width; x++)
+        {
+            for (int z = 0; z < depth; z++)
+            {
+                distances[x, z] = -1;
+                previousCells[x, z] = new Vector2Int(-1, -1);
+            }
+        }
+
+        if (blockedCells != null)
+        {
+            foreach (Vector2Int blockedCell in blockedCells)
+            {
+                if (IsValidCell(blockedCell) && blockedCell != startCell)
+                {
+                    blocked[blockedCell.x, blockedCell.y] = true;
+                }
+            }
+        }
+
+        Queue<Vector2Int> frontier = new();
+        frontier.Enqueue(startCell);
+        distances[startCell.x, startCell.y] = 0;
+
+        while (frontier.Count > 0)
+        {
+            Vector2Int current = frontier.Dequeue();
+            int nextDistance = distances[current.x, current.y] + 1;
+            if (nextDistance > maxDistance)
+            {
+                continue;
+            }
+
+            foreach (Vector2Int direction in CardinalDirections)
+            {
+                Vector2Int next = current + direction;
+                if (!IsValidCell(next) || blocked[next.x, next.y] || distances[next.x, next.y] >= 0)
+                {
+                    continue;
+                }
+
+                distances[next.x, next.y] = nextDistance;
+                previousCells[next.x, next.y] = current;
+                reachableCells[next.x, next.y] = true;
+                frontier.Enqueue(next);
+            }
+        }
+    }
+
+    private void EnsureReachabilityTexture()
+    {
+        if (reachabilityTexture != null &&
+            reachabilityTexture.width == width &&
+            reachabilityTexture.height == depth)
+        {
+            return;
+        }
+
+        if (reachabilityTexture != null)
+        {
+            if (Application.isPlaying)
+            {
+                Destroy(reachabilityTexture);
+            }
+            else
+            {
+                DestroyImmediate(reachabilityTexture);
+            }
+        }
+
+        reachabilityTexture = new Texture2D(width, depth, TextureFormat.RGBA32, false, true)
+        {
+            name = "Field Reachability Map",
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Clamp,
+            hideFlags = HideFlags.HideAndDontSave
+        };
+        UpdateReachabilityTexture();
+    }
+
+    private void UpdateReachabilityTexture()
+    {
+        EnsureReachabilityTexture();
+        Color32[] pixels = new Color32[width * depth];
+        Color32 reachableColor = new(255, 255, 255, 255);
+        Color32 blockedColor = new(0, 0, 0, 255);
+
+        for (int z = 0; z < depth; z++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                bool reachable = reachableCells != null && reachableCells[x, z];
+                pixels[z * width + x] = reachable ? reachableColor : blockedColor;
+            }
+        }
+
+        reachabilityTexture.SetPixels32(pixels);
+        reachabilityTexture.Apply(false, false);
     }
 
     private bool TryGetSurface(out GameObject surface)
