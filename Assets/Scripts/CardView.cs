@@ -22,6 +22,8 @@ public sealed class CardView : MonoBehaviour, IPointerClickHandler
     private UnitSelectionController selectionController;
     private int handIndex = -1;
 
+    public int Cost => cost;
+
     public void Configure(string newCardName, int newCost, string newSymbol, Color newFrameColor)
     {
         cardName = newCardName;

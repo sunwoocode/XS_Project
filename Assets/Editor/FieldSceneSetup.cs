@@ -23,7 +23,7 @@ public static class FieldSceneSetup
     private const string Obstacle2x1PrefabPath = PrefabFolder + "/Terrain_Block_2x1.prefab";
     private const string CardPrefabPath = CardPrefabFolder + "/Card.prefab";
     private const string FieldShaderName = "XS Project/Field Grid";
-    private const string SessionKey = "XSProject.FieldSceneSetup.SelectionShortcutsV6.Completed";
+    private const string SessionKey = "XSProject.FieldSceneSetup.UnitSelectedGridV8.Completed";
 
     static FieldSceneSetup()
     {
@@ -359,7 +359,7 @@ public static class FieldSceneSetup
         turnText.color = Color.white;
 
         Image panel = CreateImage(canvasObject.transform, "UnitMovePanel", new Color(0.08f, 0.09f, 0.10f, 0.88f));
-        SetRect(panel.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(20f, 0f), new Vector2(250f, 236f));
+        SetRect(panel.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(20f, -20f), new Vector2(250f, 236f));
 
         Text header = CreateText(panel.transform, "Header", font, 22, TextAnchor.MiddleCenter);
         SetRect(header.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -10f), new Vector2(220f, 42f));
@@ -389,10 +389,10 @@ public static class FieldSceneSetup
         Image buttonImage = CreateImage(canvasObject.transform, "EndTurnButton", new Color(0.22f, 0.24f, 0.27f, 0.98f));
         SetRect(
             buttonImage.rectTransform,
-            new Vector2(1f, 0f),
-            new Vector2(1f, 0f),
-            new Vector2(1f, 0f),
-            new Vector2(-24f, 24f),
+            new Vector2(1f, 1f),
+            new Vector2(1f, 1f),
+            new Vector2(1f, 1f),
+            new Vector2(-24f, -24f),
             new Vector2(190f, 64f));
         Button endTurnButton = buttonImage.gameObject.AddComponent<Button>();
         endTurnButton.targetGraphic = buttonImage;
@@ -408,9 +408,26 @@ public static class FieldSceneSetup
         buttonLabel.color = Color.white;
         buttonLabel.raycastTarget = false;
 
+        Image costPanel = CreateImage(canvasObject.transform, "CardCostPanel", new Color(0.10f, 0.36f, 0.62f, 0.96f));
+        SetRect(
+            costPanel.rectTransform,
+            new Vector2(1f, 1f),
+            new Vector2(1f, 1f),
+            new Vector2(1f, 1f),
+            new Vector2(-24f, -96f),
+            new Vector2(190f, 52f));
+        costPanel.raycastTarget = false;
+
+        Text costText = CreateText(costPanel.transform, "Value", font, 24, TextAnchor.MiddleCenter);
+        SetRect(costText.rectTransform, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+        costText.text = "COST 3 / 3";
+        costText.color = Color.white;
+        costText.fontStyle = FontStyle.Bold;
+        costText.raycastTarget = false;
+
         CardView[] cards = BuildCardUI(canvasObject.transform, font, cardPrefab);
 
-        controller.ConfigureUI(turnText, endTurnButton, statusButtons, cards);
+        controller.ConfigureUI(turnText, endTurnButton, statusButtons, cards, costPanel, costText);
     }
 
     private static CardView[] BuildCardUI(Transform canvasRoot, Font font, GameObject cardPrefab)
@@ -480,7 +497,7 @@ public static class FieldSceneSetup
             "DISCARD",
             new Vector2(1f, 0f),
             new Vector2(1f, 0f),
-            new Vector2(-24f, 108f),
+            new Vector2(-24f, 24f),
             new Color(0.28f, 0.29f, 0.31f, 1f),
             true);
 

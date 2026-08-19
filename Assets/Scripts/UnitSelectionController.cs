@@ -11,6 +11,8 @@ public sealed class UnitSelectionController : MonoBehaviour
     private static readonly Color AvailableColor = new(0.28f, 0.30f, 0.32f, 0.94f);
     private static readonly Color MovedColor = new(0.72f, 0.12f, 0.12f, 0.96f);
     private static readonly Color SelectedColor = new(0.82f, 0.62f, 0.12f, 0.98f);
+    private static readonly Color CostAvailableColor = new(0.10f, 0.36f, 0.62f, 0.96f);
+    private static readonly Color CostWaitingColor = new(0.16f, 0.18f, 0.21f, 0.82f);
 
     [SerializeField] private FieldGenerator field;
     [SerializeField] private Camera selectionCamera;
@@ -18,8 +20,12 @@ public sealed class UnitSelectionController : MonoBehaviour
     [SerializeField, Min(1)] private int movementRange = 3;
     [SerializeField, Min(0.01f)] private float secondsPerCell = 0.12f;
     [SerializeField, Min(0.1f)] private float opponentTurnSeconds = 3f;
+    [SerializeField, Min(1)] private int maxCardCost = 3;
+    [SerializeField, Min(0)] private int remainingCardCost = 3;
     [SerializeField] private Text turnText;
     [SerializeField] private Button endTurnButton;
+    [SerializeField] private Image cardCostPanel;
+    [SerializeField] private Text cardCostText;
     [SerializeField] private Button[] unitStatusButtons = System.Array.Empty<Button>();
     [SerializeField] private CardView[] cards = System.Array.Empty<CardView>();
 
@@ -32,6 +38,9 @@ public sealed class UnitSelectionController : MonoBehaviour
     private bool endTurnQueued;
     private int currentTurn = 1;
 
+    public int MaxCardCost => maxCardCost;
+    public int RemainingCardCost => remainingCardCost;
+
     public void Configure(FieldGenerator targetField, Camera targetCamera, GridUnit[] controlledUnits)
     {
         field = targetField;
@@ -43,12 +52,16 @@ public sealed class UnitSelectionController : MonoBehaviour
         Text targetTurnText,
         Button targetEndTurnButton,
         Button[] statusButtons,
-        CardView[] handCards)
+        CardView[] handCards,
+        Image targetCardCostPanel,
+        Text targetCardCostText)
     {
         turnText = targetTurnText;
         endTurnButton = targetEndTurnButton;
         unitStatusButtons = statusButtons ?? System.Array.Empty<Button>();
         cards = handCards ?? System.Array.Empty<CardView>();
+        cardCostPanel = targetCardCostPanel;
+        cardCostText = targetCardCostText;
         RefreshUI();
     }
 
@@ -65,6 +78,7 @@ public sealed class UnitSelectionController : MonoBehaviour
 
     private void Start()
     {
+        remainingCardCost = maxCardCost;
         if (endTurnButton != null)
         {
             endTurnButton.onClick.RemoveListener(EndPlayerTurn);
@@ -91,6 +105,8 @@ public sealed class UnitSelectionController : MonoBehaviour
         movementRange = Mathf.Max(1, movementRange);
         secondsPerCell = Mathf.Max(0.01f, secondsPerCell);
         opponentTurnSeconds = Mathf.Max(0.1f, opponentTurnSeconds);
+        maxCardCost = Mathf.Max(1, maxCardCost);
+        remainingCardCost = Mathf.Clamp(remainingCardCost, 0, maxCardCost);
     }
 
     private void Update()
@@ -137,19 +153,24 @@ public sealed class UnitSelectionController : MonoBehaviour
         GridUnit clickedUnit = hit.collider.GetComponentInParent<GridUnit>();
         if (clickedUnit != null)
         {
-            if (IsControlledUnit(clickedUnit) && !movedUnits.Contains(clickedUnit))
+            if (clickedUnit.IsPlayerControlled && movedUnits.Contains(clickedUnit))
             {
-                SelectUnit(clickedUnit);
+                CancelUnitSelection();
             }
             else
             {
-                CancelUnitSelection();
+                SelectUnit(clickedUnit);
             }
 
             return;
         }
 
         if (selectedUnit == null || !field.IsFieldCollider(hit.collider))
+        {
+            return;
+        }
+
+        if (!CanMoveSelectedUnit())
         {
             return;
         }
@@ -207,6 +228,23 @@ public sealed class UnitSelectionController : MonoBehaviour
             selectedCardIndex = nextIndex;
             cards[selectedCardIndex].SetSelected(true);
         }
+    }
+
+    public bool CanAffordCard(int cost)
+    {
+        return cost >= 0 && remainingCardCost >= cost;
+    }
+
+    public bool TrySpendCardCost(int cost)
+    {
+        if (!isPlayerTurn || isMoving || !CanAffordCard(cost))
+        {
+            return false;
+        }
+
+        remainingCardCost -= cost;
+        RefreshUI();
+        return true;
     }
 
     private void SelectUnit(GridUnit unit)
@@ -276,6 +314,7 @@ public sealed class UnitSelectionController : MonoBehaviour
     private IEnumerator WaitForNextPlayerTurn()
     {
         isPlayerTurn = false;
+        remainingCardCost = 0;
         endTurnQueued = false;
         ClearAllSelections();
         RefreshUI();
@@ -284,6 +323,7 @@ public sealed class UnitSelectionController : MonoBehaviour
 
         currentTurn++;
         movedUnits.Clear();
+        remainingCardCost = maxCardCost;
         isPlayerTurn = true;
         RefreshUI();
     }
@@ -306,6 +346,13 @@ public sealed class UnitSelectionController : MonoBehaviour
         return false;
     }
 
+    private bool CanMoveSelectedUnit()
+    {
+        return selectedUnit != null &&
+               IsControlledUnit(selectedUnit) &&
+               !movedUnits.Contains(selectedUnit);
+    }
+
     private void RefreshUI()
     {
         if (turnText != null)
@@ -316,6 +363,17 @@ public sealed class UnitSelectionController : MonoBehaviour
         if (endTurnButton != null)
         {
             endTurnButton.interactable = isPlayerTurn;
+        }
+
+        if (cardCostText != null)
+        {
+            cardCostText.text = $"COST {remainingCardCost} / {maxCardCost}";
+            cardCostText.color = isPlayerTurn ? Color.white : new Color(0.62f, 0.65f, 0.70f, 1f);
+        }
+
+        if (cardCostPanel != null)
+        {
+            cardCostPanel.color = isPlayerTurn ? CostAvailableColor : CostWaitingColor;
         }
 
         if (unitStatusButtons == null)

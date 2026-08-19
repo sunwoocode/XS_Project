@@ -17,6 +17,7 @@ public sealed class FieldGenerator : MonoBehaviour
     private static readonly int HighlightColorId = Shader.PropertyToID("_HighlightColor");
     private static readonly int MovementColorId = Shader.PropertyToID("_MovementColor");
     private static readonly int ReachabilityMapId = Shader.PropertyToID("_ReachabilityMap");
+    private static readonly int GridVisibleId = Shader.PropertyToID("_GridVisible");
 
     private static readonly Vector2Int[] CardinalDirections =
     {
@@ -50,6 +51,7 @@ public sealed class FieldGenerator : MonoBehaviour
     public float TileSizeMeters => CellSizeMeters;
     public int Width => width;
     public int Depth => depth;
+    public bool IsGridActive => highlightEnabled;
 
 #if UNITY_EDITOR
     private bool regenerationQueued;
@@ -261,6 +263,7 @@ public sealed class FieldGenerator : MonoBehaviour
         propertyBlock.SetColor(HighlightColorId, highlightColor);
         propertyBlock.SetColor(MovementColorId, movementColor);
         propertyBlock.SetFloat(LineWidthId, lineWidth);
+        propertyBlock.SetFloat(GridVisibleId, highlightEnabled ? 1f : 0f);
         EnsureReachabilityTexture();
         propertyBlock.SetTexture(ReachabilityMapId, reachabilityTexture);
         propertyBlock.SetVector(

@@ -10,6 +10,7 @@ Shader "XS Project/Field Grid"
         _HighlightCell ("Highlighted Cell", Vector) = (-1, -1, 0, 0)
         _ReachabilityMap ("Reachability Map", 2D) = "black" {}
         _LineWidth ("Line Width", Range(0.005, 0.15)) = 0.035
+        _GridVisible ("Grid Visible", Range(0, 1)) = 0
     }
 
     SubShader
@@ -58,6 +59,7 @@ Shader "XS Project/Field Grid"
                 float4 _GridSize;
                 float4 _HighlightCell;
                 float _LineWidth;
+                float _GridVisible;
             CBUFFER_END
 
             TEXTURE2D(_ReachabilityMap);
@@ -86,15 +88,16 @@ Shader "XS Project/Field Grid"
                 float cellDelta = max(
                     abs(cellIndex.x - _HighlightCell.x),
                     abs(cellIndex.y - _HighlightCell.y));
-                float selectedCell = (1.0 - step(0.5, cellDelta)) * _HighlightCell.z * topFace;
+                float selectedCell =
+                    (1.0 - step(0.5, cellDelta)) * _HighlightCell.z * _GridVisible * topFace;
                 float2 reachabilityUv = (cellIndex + 0.5) / gridSize;
                 float reachableCell =
                     SAMPLE_TEXTURE2D(_ReachabilityMap, sampler_ReachabilityMap, reachabilityUv).r *
-                    _HighlightCell.z * topFace;
+                    _HighlightCell.z * _GridVisible * topFace;
                 half4 surfaceColor = lerp(_BaseColor, _MovementColor, reachableCell);
                 surfaceColor = lerp(surfaceColor, _HighlightColor, selectedCell);
 
-                return lerp(surfaceColor, _LineColor, gridLine * topFace);
+                return lerp(surfaceColor, _LineColor, gridLine * _GridVisible * topFace);
             }
             ENDHLSL
         }
