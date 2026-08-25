@@ -19,7 +19,12 @@ public sealed class CardHoverUI : MonoBehaviour, IPointerEnterHandler, IPointerE
 
     private void Awake()
     {
-        rectTransform = (RectTransform)transform;
+        CaptureHomePose();
+    }
+
+    public void CaptureHomePose()
+    {
+        rectTransform ??= (RectTransform)transform;
         homePosition = rectTransform.anchoredPosition;
         homeRotation = rectTransform.localRotation;
         homeScale = rectTransform.localScale;

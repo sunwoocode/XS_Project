@@ -28,8 +28,8 @@ public sealed class FieldGenerator : MonoBehaviour
     };
 
     [Header("Grid")]
-    [SerializeField, Min(1)] private int width = 10;
-    [SerializeField, Min(1)] private int depth = 10;
+    [SerializeField, Min(1)] private int width = 20;
+    [SerializeField, Min(1)] private int depth = 30;
     [SerializeField, Min(0.02f)] private float tileHeight = 0.16f;
 
     [Header("Appearance")]
@@ -105,6 +105,14 @@ public sealed class FieldGenerator : MonoBehaviour
     {
         gridMaterial = material;
         UpdateSurface();
+    }
+
+    public void SetDimensions(int newWidth, int newDepth)
+    {
+        width = Mathf.Max(1, newWidth);
+        depth = Mathf.Max(1, newDepth);
+        ClearHighlights();
+        GenerateField();
     }
 
     public Vector3 GetCellCenterWorld(int column, int row, float surfaceOffset = 0f)

@@ -5,46 +5,55 @@ using UnityEngine.UI;
 public sealed class CardView : MonoBehaviour, IPointerClickHandler
 {
     [Header("Card Data")]
-    [SerializeField] private string cardName = "CARD";
-    [SerializeField, Min(0)] private int cost = 1;
-    [SerializeField] private string symbol = "?";
-    [SerializeField] private Color frameColor = Color.white;
+    [SerializeField] private string cardName = CardData.DefaultCardName;
+    [SerializeField, Min(0)] private int tagPoint = CardData.DefaultTagPoint;
+    [SerializeField, Min(0)] private int cost = CardData.DefaultCost;
+    [SerializeField] private string imagePath = "";
+    [SerializeField, TextArea(2, 5)] private string effectText = CardData.DefaultEffectText;
+    [SerializeField] private Color raceColor = new(179f / 255f, 175f / 255f, 175f / 255f, 1f);
 
     [Header("View References")]
-    [SerializeField] private Image frameImage;
-    [SerializeField] private Image symbolPanel;
-    [SerializeField] private Text titleText;
+    [SerializeField] private Image backgroundImage;
+    [SerializeField] private Text cardNameText;
+    [SerializeField] private Text tagPointText;
     [SerializeField] private Text costText;
-    [SerializeField] private Text symbolText;
+    [SerializeField] private Image artworkImage;
+    [SerializeField] private Text effectDescriptionText;
     [SerializeField] private CardHoverUI hoverUI;
     [SerializeField] private Outline selectionOutline;
 
     private UnitSelectionController selectionController;
     private int handIndex = -1;
 
+    public int TagPoint => tagPoint;
     public int Cost => cost;
 
-    public void Configure(string newCardName, int newCost, string newSymbol, Color newFrameColor)
+    public void Configure(CardData data)
     {
-        cardName = newCardName;
-        cost = Mathf.Max(0, newCost);
-        symbol = newSymbol;
-        frameColor = newFrameColor;
+        data ??= new CardData();
+        cardName = data.CardName;
+        tagPoint = Mathf.Max(0, data.TagPoint);
+        cost = Mathf.Max(0, data.Cost);
+        imagePath = data.ImagePath;
+        effectText = data.EffectText;
+        raceColor = data.RaceColor;
         Refresh();
     }
 
     public void SetViewReferences(
-        Image newFrameImage,
-        Image newSymbolPanel,
-        Text newTitleText,
+        Image newBackgroundImage,
+        Text newCardNameText,
+        Text newTagPointText,
         Text newCostText,
-        Text newSymbolText)
+        Image newArtworkImage,
+        Text newEffectDescriptionText)
     {
-        frameImage = newFrameImage;
-        symbolPanel = newSymbolPanel;
-        titleText = newTitleText;
+        backgroundImage = newBackgroundImage;
+        cardNameText = newCardNameText;
+        tagPointText = newTagPointText;
         costText = newCostText;
-        symbolText = newSymbolText;
+        artworkImage = newArtworkImage;
+        effectDescriptionText = newEffectDescriptionText;
         Refresh();
     }
 
@@ -89,29 +98,28 @@ public sealed class CardView : MonoBehaviour, IPointerClickHandler
 
     private void OnValidate()
     {
+        cardName = string.IsNullOrWhiteSpace(cardName) ? CardData.DefaultCardName : cardName;
+        tagPoint = Mathf.Max(0, tagPoint);
         cost = Mathf.Max(0, cost);
+        effectText = string.IsNullOrWhiteSpace(effectText) ? CardData.DefaultEffectText : effectText;
         Refresh();
     }
 
     private void Refresh()
     {
-        if (frameImage != null)
+        if (backgroundImage != null)
         {
-            frameImage.color = frameColor;
+            backgroundImage.color = raceColor;
         }
 
-        if (symbolPanel != null)
+        if (cardNameText != null)
         {
-            symbolPanel.color = new Color(
-                frameColor.r * 0.55f,
-                frameColor.g * 0.55f,
-                frameColor.b * 0.55f,
-                frameColor.a);
+            cardNameText.text = cardName;
         }
 
-        if (titleText != null)
+        if (tagPointText != null)
         {
-            titleText.text = cardName;
+            tagPointText.text = tagPoint.ToString();
         }
 
         if (costText != null)
@@ -119,9 +127,22 @@ public sealed class CardView : MonoBehaviour, IPointerClickHandler
             costText.text = cost.ToString();
         }
 
-        if (symbolText != null)
+        if (effectDescriptionText != null)
         {
-            symbolText.text = symbol;
+            effectDescriptionText.text = effectText;
+        }
+
+        if (artworkImage != null)
+        {
+            Sprite artwork = string.IsNullOrWhiteSpace(imagePath) ? null : Resources.Load<Sprite>(imagePath);
+            artworkImage.sprite = artwork;
+            artworkImage.enabled = artwork != null;
+            artworkImage.preserveAspect = true;
+
+            if (!string.IsNullOrWhiteSpace(imagePath) && artwork == null && Application.isPlaying)
+            {
+                Debug.LogWarning($"카드 이미지 Resources/{imagePath}를 찾을 수 없습니다.", this);
+            }
         }
     }
 }

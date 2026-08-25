@@ -23,7 +23,7 @@ public static class FieldSceneSetup
     private const string Obstacle2x1PrefabPath = PrefabFolder + "/Terrain_Block_2x1.prefab";
     private const string CardPrefabPath = CardPrefabFolder + "/Card.prefab";
     private const string FieldShaderName = "XS Project/Field Grid";
-    private const string SessionKey = "XSProject.FieldSceneSetup.UnitSelectedGridV8.Completed";
+    private const string SessionKey = "XSProject.FieldSceneSetup.CardNames20x30V10.Completed";
 
     static FieldSceneSetup()
     {
@@ -41,7 +41,7 @@ public static class FieldSceneSetup
         SetupField();
     }
 
-    [MenuItem("XS Project/Setup 10x10 Field")]
+    [MenuItem("XS Project/Setup 20x30 Field")]
     public static void SetupField()
     {
         Scene scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
@@ -102,6 +102,7 @@ public static class FieldSceneSetup
         GameObject cardPrefab = BuildCardPrefab(CardPrefabPath);
 
         DestroySceneObject("Field_10x10");
+        DestroySceneObject("Field_20x30");
         DestroyAllSceneUnits();
         DestroySceneObject("Terrain_Block_01");
         DestroySceneObject("Terrain_Block_1x1");
@@ -109,20 +110,20 @@ public static class FieldSceneSetup
         DestroySceneObject("UnitSelectionController");
         DestroySceneObject("TurnUI");
 
-        GameObject fieldObject = new("Field_10x10");
+        GameObject fieldObject = new("Field_20x30");
         fieldObject.transform.position = Vector3.zero;
         FieldGenerator field = fieldObject.AddComponent<FieldGenerator>();
         field.SetGridMaterial(fieldMaterial);
-        field.GenerateField();
+        field.SetDimensions(20, 30);
 
-        Camera camera = ConfigureCamera();
+        Camera camera = ConfigureCamera(field);
         ConfigureLight();
 
         Vector2Int[] startingCells =
         {
-            new(1, 1),
-            new(2, 1),
-            new(1, 2)
+            new(2, 2),
+            new(3, 2),
+            new(2, 3)
         };
         GridUnit[] units = new GridUnit[startingCells.Length];
         for (int i = 0; i < startingCells.Length; i++)
@@ -138,17 +139,17 @@ public static class FieldSceneSetup
 
         GameObject enemyObject = (GameObject)PrefabUtility.InstantiatePrefab(enemyPrefab, scene);
         enemyObject.name = "Unit_Enemy_1";
-        enemyObject.transform.position = field.GetCellCenterWorld(8, 8, 0f);
+        enemyObject.transform.position = field.GetCellCenterWorld(17, 27, 0f);
         GridUnit enemyUnit = enemyObject.GetComponent<GridUnit>();
         enemyUnit.Configure(1, GridUnitTeam.Enemy);
         PrefabUtility.RecordPrefabInstancePropertyModifications(enemyObject.transform);
         PrefabUtility.RecordPrefabInstancePropertyModifications(enemyUnit);
 
         GameObject obstacle1x1 = (GameObject)PrefabUtility.InstantiatePrefab(obstacle1x1Prefab, scene);
-        obstacle1x1.transform.position = field.GetCellCenterWorld(5, 4, 0f);
+        obstacle1x1.transform.position = field.GetCellCenterWorld(10, 12, 0f);
 
         GameObject obstacle2x1 = (GameObject)PrefabUtility.InstantiatePrefab(obstacle2x1Prefab, scene);
-        obstacle2x1.transform.position = field.GetCellCenterWorld(2, 7, 0f);
+        obstacle2x1.transform.position = field.GetCellCenterWorld(5, 21, 0f);
 
         GameObject controllerObject = new("UnitSelectionController");
         UnitSelectionController controller = controllerObject.AddComponent<UnitSelectionController>();
@@ -160,7 +161,7 @@ public static class FieldSceneSetup
         EditorSceneManager.SaveScene(scene);
         AssetDatabase.SaveAssets();
         Selection.activeGameObject = fieldObject;
-        Debug.Log("XS Project: player units, non-controllable enemy prefab, and turn UI configured.");
+        Debug.Log("XS Project: 20x30 field, distributed units, card-name UI, and right-drag camera pan configured.");
     }
 
     private static GameObject BuildUnitPrefab(
@@ -251,18 +252,8 @@ public static class FieldSceneSetup
 
     private static GameObject BuildCardPrefab(string prefabPath)
     {
-        GameObject existingPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
-        if (existingPrefab != null)
-        {
-            GameObject prefabRoot = PrefabUtility.LoadPrefabContents(prefabPath);
-            ConfigureCardInteraction(prefabRoot);
-            PrefabUtility.SaveAsPrefabAsset(prefabRoot, prefabPath);
-            PrefabUtility.UnloadPrefabContents(prefabRoot);
-            return AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
-        }
-
         Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        Image card = CreateImage(null, "Card", new Color(0.68f, 0.18f, 0.15f, 1f));
+        Image card = CreateImage(null, "Card", CardData.DefaultRaceColor);
         SetRect(
             card.rectTransform,
             new Vector2(0.5f, 0f),
@@ -273,45 +264,71 @@ public static class FieldSceneSetup
         card.raycastTarget = true;
         card.gameObject.AddComponent<CardHoverUI>();
 
-        Image body = CreateImage(card.transform, "CardBody", new Color(0.10f, 0.11f, 0.13f, 1f));
+        Image body = CreateImage(card.transform, "CardBody", new Color(0.06f, 0.07f, 0.08f, 0.58f));
         SetRect(body.rectTransform, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
         body.rectTransform.offsetMin = new Vector2(6f, 6f);
         body.rectTransform.offsetMax = new Vector2(-6f, -6f);
         body.raycastTarget = false;
 
-        Text title = CreateText(card.transform, "Title", font, 19, TextAnchor.MiddleCenter);
-        SetRect(title.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(12f, -10f), new Vector2(120f, 38f));
-        title.color = Color.white;
-        title.fontStyle = FontStyle.Bold;
-        title.raycastTarget = false;
+        Image tagBadge = CreateImage(card.transform, "TagPoint", new Color(0.16f, 0.18f, 0.21f, 0.96f));
+        SetRect(tagBadge.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(8f, -8f), new Vector2(38f, 38f));
+        tagBadge.raycastTarget = false;
+        Text tagText = CreateText(tagBadge.transform, "Value", font, 23, TextAnchor.MiddleCenter);
+        SetRect(tagText.rectTransform, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+        tagText.text = CardData.DefaultTagPoint.ToString();
+        tagText.color = Color.white;
+        tagText.fontStyle = FontStyle.Bold;
+        tagText.raycastTarget = false;
 
         Image costBadge = CreateImage(card.transform, "Cost", new Color(0.12f, 0.58f, 0.82f, 1f));
-        SetRect(costBadge.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(8f, -8f), new Vector2(38f, 38f));
+        SetRect(costBadge.rectTransform, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-8f, -8f), new Vector2(38f, 38f));
         costBadge.raycastTarget = false;
         Text costText = CreateText(costBadge.transform, "Value", font, 24, TextAnchor.MiddleCenter);
         SetRect(costText.rectTransform, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+        costText.text = CardData.DefaultCost.ToString();
         costText.color = Color.white;
         costText.fontStyle = FontStyle.Bold;
         costText.raycastTarget = false;
 
-        Image symbolPanel = CreateImage(card.transform, "SymbolPanel", new Color(0.374f, 0.099f, 0.083f, 1f));
-        SetRect(symbolPanel.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 4f), new Vector2(122f, 104f));
-        symbolPanel.raycastTarget = false;
-        Text symbolText = CreateText(symbolPanel.transform, "Symbol", font, 44, TextAnchor.MiddleCenter);
-        SetRect(symbolText.rectTransform, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
-        symbolText.color = Color.white;
-        symbolText.fontStyle = FontStyle.Bold;
-        symbolText.raycastTarget = false;
+        Text cardNameText = CreateText(card.transform, "CardName", font, 16, TextAnchor.MiddleCenter);
+        SetRect(cardNameText.rectTransform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 158f), new Vector2(132f, 22f));
+        cardNameText.text = CardData.DefaultCardName;
+        cardNameText.color = Color.white;
+        cardNameText.fontStyle = FontStyle.Bold;
+        cardNameText.resizeTextForBestFit = true;
+        cardNameText.resizeTextMinSize = 10;
+        cardNameText.resizeTextMaxSize = 16;
+        cardNameText.horizontalOverflow = HorizontalWrapMode.Wrap;
+        cardNameText.verticalOverflow = VerticalWrapMode.Truncate;
+        cardNameText.raycastTarget = false;
 
-        Text footer = CreateText(card.transform, "Footer", font, 14, TextAnchor.MiddleCenter);
-        SetRect(footer.rectTransform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 14f), new Vector2(132f, 34f));
-        footer.text = "NO EFFECT";
-        footer.color = new Color(0.78f, 0.80f, 0.84f, 1f);
-        footer.raycastTarget = false;
+        Image artworkPanel = CreateImage(card.transform, "ArtworkPanel", new Color(0.04f, 0.05f, 0.06f, 0.72f));
+        SetRect(artworkPanel.rectTransform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 88f), new Vector2(132f, 66f));
+        artworkPanel.raycastTarget = false;
+        Image artwork = CreateImage(artworkPanel.transform, "Artwork", Color.white);
+        SetRect(artwork.rectTransform, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+        artwork.rectTransform.offsetMin = new Vector2(4f, 4f);
+        artwork.rectTransform.offsetMax = new Vector2(-4f, -4f);
+        artwork.preserveAspect = true;
+        artwork.raycastTarget = false;
+        artwork.enabled = false;
+
+        Image effectPanel = CreateImage(card.transform, "EffectPanel", new Color(0.04f, 0.05f, 0.06f, 0.78f));
+        SetRect(effectPanel.rectTransform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 12f), new Vector2(132f, 72f));
+        effectPanel.raycastTarget = false;
+        Text effectText = CreateText(effectPanel.transform, "EffectText", font, 13, TextAnchor.MiddleCenter);
+        SetRect(effectText.rectTransform, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+        effectText.rectTransform.offsetMin = new Vector2(7f, 5f);
+        effectText.rectTransform.offsetMax = new Vector2(-7f, -5f);
+        effectText.text = CardData.DefaultEffectText;
+        effectText.color = Color.white;
+        effectText.horizontalOverflow = HorizontalWrapMode.Wrap;
+        effectText.verticalOverflow = VerticalWrapMode.Truncate;
+        effectText.raycastTarget = false;
 
         CardView cardView = card.gameObject.AddComponent<CardView>();
-        cardView.SetViewReferences(card, symbolPanel, title, costText, symbolText);
-        cardView.Configure("CARD", 1, "?", new Color(0.68f, 0.18f, 0.15f, 1f));
+        cardView.SetViewReferences(card, cardNameText, tagText, costText, artwork, effectText);
+        cardView.Configure(new CardData());
         ConfigureCardInteraction(card.gameObject);
 
         GameObject prefab = PrefabUtility.SaveAsPrefabAsset(card.gameObject, prefabPath);
@@ -441,44 +458,8 @@ public static class FieldSceneSetup
             new Vector2(0f, 18f),
             new Vector2(720f, 310f));
 
-        string[] names = { "STRIKE", "GUARD", "ADVANCE", "FOCUS", "RECOVER" };
-        string[] symbols = { "X", "[]", ">>", "*", "+" };
-        int[] costs = { 1, 1, 1, 2, 1 };
-        Color[] frameColors =
-        {
-            new(0.68f, 0.18f, 0.15f, 1f),
-            new(0.16f, 0.38f, 0.68f, 1f),
-            new(0.18f, 0.54f, 0.30f, 1f),
-            new(0.48f, 0.24f, 0.64f, 1f),
-            new(0.68f, 0.52f, 0.16f, 1f)
-        };
-        float[] xPositions = { -220f, -110f, 0f, 110f, 220f };
-        float[] yPositions = { 8f, 28f, 38f, 28f, 8f };
-        float[] rotations = { 10f, 5f, 0f, -5f, -10f };
-        CardView[] cards = new CardView[names.Length];
-
-        for (int i = 0; i < names.Length; i++)
-        {
-            GameObject cardObject = (GameObject)PrefabUtility.InstantiatePrefab(cardPrefab, hand);
-            cardObject.name = $"Card_{i + 1}_{names[i]}";
-            Image card = cardObject.GetComponent<Image>();
-            SetRect(
-                card.rectTransform,
-                new Vector2(0.5f, 0f),
-                new Vector2(0.5f, 0f),
-                new Vector2(0.5f, 0f),
-                new Vector2(xPositions[i], yPositions[i]),
-                new Vector2(164f, 226f));
-            card.rectTransform.localRotation = Quaternion.Euler(0f, 0f, rotations[i]);
-            CardView cardView = cardObject.GetComponent<CardView>();
-            cardView.Configure(names[i], costs[i], symbols[i], frameColors[i]);
-            cards[i] = cardView;
-
-            foreach (Component component in cardObject.GetComponentsInChildren<Component>(true))
-            {
-                PrefabUtility.RecordPrefabInstancePropertyModifications(component);
-            }
-        }
+        CardCsvLoader loader = hand.gameObject.AddComponent<CardCsvLoader>();
+        loader.Configure(cardPrefab.GetComponent<CardView>(), Object.FindFirstObjectByType<UnitSelectionController>());
 
         BuildCardPile(
             canvasRoot,
@@ -501,7 +482,7 @@ public static class FieldSceneSetup
             new Color(0.28f, 0.29f, 0.31f, 1f),
             true);
 
-        return cards;
+        return new CardView[0];
     }
 
     private static void BuildCardPile(
@@ -688,7 +669,7 @@ public static class FieldSceneSetup
         return material;
     }
 
-    private static Camera ConfigureCamera()
+    private static Camera ConfigureCamera(FieldGenerator field)
     {
         Camera camera = Camera.main;
         if (camera == null)
@@ -707,6 +688,13 @@ public static class FieldSceneSetup
         camera.farClipPlane = 100f;
         camera.clearFlags = CameraClearFlags.SolidColor;
         camera.backgroundColor = new Color(0.055f, 0.09f, 0.07f, 1f);
+        FieldCameraPan cameraPan = camera.GetComponent<FieldCameraPan>();
+        if (cameraPan == null)
+        {
+            cameraPan = camera.gameObject.AddComponent<FieldCameraPan>();
+        }
+
+        cameraPan.Configure(field);
         return camera;
     }
 

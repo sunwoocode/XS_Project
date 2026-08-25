@@ -40,6 +40,7 @@ public sealed class UnitSelectionController : MonoBehaviour
 
     public int MaxCardCost => maxCardCost;
     public int RemainingCardCost => remainingCardCost;
+    public event System.Action PlayerTurnStarted;
 
     public void Configure(FieldGenerator targetField, Camera targetCamera, GridUnit[] controlledUnits)
     {
@@ -88,6 +89,7 @@ public sealed class UnitSelectionController : MonoBehaviour
         BindSelectionUI();
 
         RefreshUI();
+        PlayerTurnStarted?.Invoke();
     }
 
     private void OnDestroy()
@@ -247,6 +249,18 @@ public sealed class UnitSelectionController : MonoBehaviour
         return true;
     }
 
+    public void SetCards(CardView[] handCards)
+    {
+        ClearCardSelection();
+        cards = handCards ?? System.Array.Empty<CardView>();
+        for (int i = 0; i < cards.Length; i++)
+        {
+            cards[i]?.BindSelection(this, i);
+        }
+
+        RefreshUI();
+    }
+
     private void SelectUnit(GridUnit unit)
     {
         selectedUnit = unit;
@@ -326,6 +340,7 @@ public sealed class UnitSelectionController : MonoBehaviour
         remainingCardCost = maxCardCost;
         isPlayerTurn = true;
         RefreshUI();
+        PlayerTurnStarted?.Invoke();
     }
 
     private bool IsControlledUnit(GridUnit unit)
@@ -405,8 +420,6 @@ public sealed class UnitSelectionController : MonoBehaviour
         if (keyboard.digit1Key.wasPressedThisFrame || keyboard.numpad1Key.wasPressedThisFrame) { SelectCardByIndex(0); return true; }
         if (keyboard.digit2Key.wasPressedThisFrame || keyboard.numpad2Key.wasPressedThisFrame) { SelectCardByIndex(1); return true; }
         if (keyboard.digit3Key.wasPressedThisFrame || keyboard.numpad3Key.wasPressedThisFrame) { SelectCardByIndex(2); return true; }
-        if (keyboard.digit4Key.wasPressedThisFrame || keyboard.numpad4Key.wasPressedThisFrame) { SelectCardByIndex(3); return true; }
-        if (keyboard.digit5Key.wasPressedThisFrame || keyboard.numpad5Key.wasPressedThisFrame) { SelectCardByIndex(4); return true; }
         if (keyboard.qKey.wasPressedThisFrame) { SelectUnitByIndex(0); return true; }
         if (keyboard.wKey.wasPressedThisFrame) { SelectUnitByIndex(1); return true; }
         if (keyboard.eKey.wasPressedThisFrame) { SelectUnitByIndex(2); return true; }
