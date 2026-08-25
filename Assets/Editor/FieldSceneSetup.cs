@@ -6,10 +6,10 @@ using UnityEngine.InputSystem.UI;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
-[InitializeOnLoad]
 public static class FieldSceneSetup
 {
     private const string ScenePath = "Assets/Scenes/SampleScene.unity";
+    private const string CardCsvPath = "Assets/Resources/CardData/cards.csv";
     private const string MaterialFolder = "Assets/Materials";
     private const string PrefabFolder = "Assets/Prefabs";
     private const string CardPrefabFolder = PrefabFolder + "/Cards";
@@ -23,23 +23,6 @@ public static class FieldSceneSetup
     private const string Obstacle2x1PrefabPath = PrefabFolder + "/Terrain_Block_2x1.prefab";
     private const string CardPrefabPath = CardPrefabFolder + "/Card.prefab";
     private const string FieldShaderName = "XS Project/Field Grid";
-    private const string SessionKey = "XSProject.FieldSceneSetup.CardNames20x30V10.Completed";
-
-    static FieldSceneSetup()
-    {
-        EditorApplication.delayCall += SetupFieldOnce;
-    }
-
-    private static void SetupFieldOnce()
-    {
-        if (SessionState.GetBool(SessionKey, false) || EditorApplication.isPlayingOrWillChangePlaymode)
-        {
-            return;
-        }
-
-        SessionState.SetBool(SessionKey, true);
-        SetupField();
-    }
 
     [MenuItem("XS Project/Setup 20x30 Field")]
     public static void SetupField()
@@ -291,7 +274,7 @@ public static class FieldSceneSetup
         costText.raycastTarget = false;
 
         Text cardNameText = CreateText(card.transform, "CardName", font, 16, TextAnchor.MiddleCenter);
-        SetRect(cardNameText.rectTransform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 158f), new Vector2(132f, 22f));
+        SetRect(cardNameText.rectTransform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 88f), new Vector2(132f, 22f));
         cardNameText.text = CardData.DefaultCardName;
         cardNameText.color = Color.white;
         cardNameText.fontStyle = FontStyle.Bold;
@@ -303,7 +286,7 @@ public static class FieldSceneSetup
         cardNameText.raycastTarget = false;
 
         Image artworkPanel = CreateImage(card.transform, "ArtworkPanel", new Color(0.04f, 0.05f, 0.06f, 0.72f));
-        SetRect(artworkPanel.rectTransform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 88f), new Vector2(132f, 66f));
+        SetRect(artworkPanel.rectTransform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 114f), new Vector2(132f, 66f));
         artworkPanel.raycastTarget = false;
         Image artwork = CreateImage(artworkPanel.transform, "Artwork", Color.white);
         SetRect(artwork.rectTransform, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
@@ -459,7 +442,16 @@ public static class FieldSceneSetup
             new Vector2(720f, 310f));
 
         CardCsvLoader loader = hand.gameObject.AddComponent<CardCsvLoader>();
-        loader.Configure(cardPrefab.GetComponent<CardView>(), Object.FindFirstObjectByType<UnitSelectionController>());
+        TextAsset cardCsv = AssetDatabase.LoadAssetAtPath<TextAsset>(CardCsvPath);
+        if (cardCsv == null)
+        {
+            Debug.LogError($"카드 CSV 에셋을 찾을 수 없습니다: {CardCsvPath}");
+        }
+
+        loader.Configure(
+            cardCsv,
+            cardPrefab.GetComponent<CardView>(),
+            Object.FindFirstObjectByType<UnitSelectionController>());
 
         BuildCardPile(
             canvasRoot,
@@ -683,7 +675,7 @@ public static class FieldSceneSetup
         camera.transform.position = new Vector3(0f, 12f, 0f);
         camera.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
         camera.orthographic = true;
-        camera.orthographicSize = 5.75f;
+        camera.orthographicSize = 2.875f;
         camera.nearClipPlane = 0.1f;
         camera.farClipPlane = 100f;
         camera.clearFlags = CameraClearFlags.SolidColor;

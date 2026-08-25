@@ -24,6 +24,15 @@ public sealed class CardCsvLoader : MonoBehaviour
         selectionController = newSelectionController;
     }
 
+    public void Configure(
+        TextAsset newCardCsv,
+        CardView newCardPrefab,
+        UnitSelectionController newSelectionController)
+    {
+        cardCsv = newCardCsv;
+        Configure(newCardPrefab, newSelectionController);
+    }
+
     private void Awake()
     {
         cardCsv ??= Resources.Load<TextAsset>(DefaultCsvResourcePath);
@@ -31,7 +40,11 @@ public sealed class CardCsvLoader : MonoBehaviour
 
         if (cardCsv == null)
         {
-            Debug.LogError($"카드 CSV를 Resources/{DefaultCsvResourcePath}.csv 에서 찾을 수 없습니다.", this);
+            Debug.LogError(
+                $"CardCsvLoader의 cardCsv 참조가 비어 있고 " +
+                $"Resources/{DefaultCsvResourcePath}.csv도 로드할 수 없습니다. " +
+                "Assets/Resources/CardData/cards.csv 파일과 씬 참조를 확인하세요.",
+                this);
             selectionController?.SetCards(System.Array.Empty<CardView>());
             return;
         }

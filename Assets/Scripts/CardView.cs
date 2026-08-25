@@ -1,9 +1,15 @@
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 public sealed class CardView : MonoBehaviour, IPointerClickHandler
 {
+    private const string CardImageResourceFolder = "CardImages/";
+    private static readonly Dictionary<string, Sprite> ArtworkCache = new(StringComparer.Ordinal);
+    private static readonly HashSet<string> MissingArtworkWarnings = new(StringComparer.Ordinal);
+
     [Header("Card Data")]
     [SerializeField] private string cardName = CardData.DefaultCardName;
     [SerializeField, Min(0)] private int tagPoint = CardData.DefaultTagPoint;
@@ -27,6 +33,13 @@ public sealed class CardView : MonoBehaviour, IPointerClickHandler
 
     public int TagPoint => tagPoint;
     public int Cost => cost;
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetArtworkCache()
+    {
+        ArtworkCache.Clear();
+        MissingArtworkWarnings.Clear();
+    }
 
     public void Configure(CardData data)
     {
@@ -134,15 +147,71 @@ public sealed class CardView : MonoBehaviour, IPointerClickHandler
 
         if (artworkImage != null)
         {
-            Sprite artwork = string.IsNullOrWhiteSpace(imagePath) ? null : Resources.Load<Sprite>(imagePath);
+            Sprite artwork = LoadArtwork(imagePath);
             artworkImage.sprite = artwork;
             artworkImage.enabled = artwork != null;
             artworkImage.preserveAspect = true;
+        }
+    }
 
-            if (!string.IsNullOrWhiteSpace(imagePath) && artwork == null && Application.isPlaying)
+    private Sprite LoadArtwork(string configuredPath)
+    {
+        string resourcePath = NormalizeArtworkPath(configuredPath);
+        if (string.IsNullOrEmpty(resourcePath))
+        {
+            return null;
+        }
+
+        if (ArtworkCache.TryGetValue(resourcePath, out Sprite cachedArtwork))
+        {
+            return cachedArtwork;
+        }
+
+        Sprite artwork = Resources.Load<Sprite>(resourcePath);
+        if (artwork == null)
+        {
+            Texture2D texture = Resources.Load<Texture2D>(resourcePath);
+            if (texture != null)
             {
-                Debug.LogWarning($"카드 이미지 Resources/{imagePath}를 찾을 수 없습니다.", this);
+                artwork = Sprite.Create(
+                    texture,
+                    new Rect(0f, 0f, texture.width, texture.height),
+                    new Vector2(0.5f, 0.5f),
+                    100f);
+                artwork.name = $"{texture.name}_RuntimeSprite";
+                artwork.hideFlags = HideFlags.HideAndDontSave;
             }
         }
+
+        ArtworkCache[resourcePath] = artwork;
+        if (artwork == null && Application.isPlaying && MissingArtworkWarnings.Add(resourcePath))
+        {
+            Debug.LogWarning($"카드 이미지 Resources/{resourcePath}를 찾을 수 없습니다.", this);
+        }
+
+        return artwork;
+    }
+
+    private static string NormalizeArtworkPath(string configuredPath)
+    {
+        if (string.IsNullOrWhiteSpace(configuredPath))
+        {
+            return string.Empty;
+        }
+
+        string normalized = configuredPath.Trim().Replace('\\', '/').TrimStart('/');
+        int lastSlash = normalized.LastIndexOf('/');
+        int extensionSeparator = normalized.LastIndexOf('.');
+        if (extensionSeparator > lastSlash)
+        {
+            normalized = normalized.Substring(0, extensionSeparator);
+        }
+
+        if (normalized.StartsWith(CardImageResourceFolder, StringComparison.OrdinalIgnoreCase))
+        {
+            return CardImageResourceFolder + normalized.Substring(CardImageResourceFolder.Length);
+        }
+
+        return CardImageResourceFolder + normalized;
     }
 }
