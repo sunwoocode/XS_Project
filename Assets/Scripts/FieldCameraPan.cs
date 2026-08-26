@@ -6,29 +6,114 @@ using UnityEngine.InputSystem;
 public sealed class FieldCameraPan : MonoBehaviour
 {
     [SerializeField] private FieldGenerator field;
+    [SerializeField, Range(20f, 80f)] private float pitchDegrees = 55f;
+    [SerializeField, Range(-180f, 180f)] private float yawDegrees = 45f;
+    [SerializeField, Min(1f)] private float focusDistance = 12f;
+    [SerializeField, Range(20f, 80f)] private float fieldOfView = 42f;
+    [SerializeField, Min(0f)] private float focusDuration = 0.25f;
+    [SerializeField, Min(0.01f)] private float dragSensitivity = 1f;
 
     private Camera panCamera;
     private Vector2 previousPointerPosition;
+    private Vector3 focusPoint;
+    private Vector3 focusStartPoint;
+    private Vector3 targetFocusPoint;
+    private float focusElapsed;
     private bool isDragging;
+    private bool isFocusing;
+    private bool isInitialized;
 
     public void Configure(FieldGenerator targetField)
     {
         field = targetField;
         EnsureCamera();
+        ApplyCameraSettings();
         SnapToPlayerSide();
+    }
+
+    public void FocusOn(Vector3 worldPosition)
+    {
+        EnsureInitialized();
+        if (!isInitialized)
+        {
+            return;
+        }
+
+        focusStartPoint = focusPoint;
+        targetFocusPoint = ClampFocusPoint(worldPosition);
+        focusElapsed = 0f;
+        isFocusing = focusDuration > 0f &&
+                     (targetFocusPoint - focusStartPoint).sqrMagnitude > 0.000001f;
+
+        if (!isFocusing)
+        {
+            focusPoint = targetFocusPoint;
+            ApplyCameraTransform();
+        }
     }
 
     private void Awake()
     {
         EnsureCamera();
         field ??= FindFirstObjectByType<FieldGenerator>();
-        ClampToField();
+        ApplyCameraSettings();
+        InitializeFocusFromTransform();
+    }
+
+    private void OnValidate()
+    {
+        pitchDegrees = Mathf.Clamp(pitchDegrees, 20f, 80f);
+        yawDegrees = Mathf.Clamp(yawDegrees, -180f, 180f);
+        focusDistance = Mathf.Max(1f, focusDistance);
+        fieldOfView = Mathf.Clamp(fieldOfView, 20f, 80f);
+        focusDuration = Mathf.Max(0f, focusDuration);
+        dragSensitivity = Mathf.Max(0.01f, dragSensitivity);
+
+        if (!Application.isPlaying)
+        {
+            EnsureCamera();
+            ApplyCameraSettings();
+        }
     }
 
     private void Update()
     {
+        EnsureInitialized();
+        if (!isInitialized)
+        {
+            isDragging = false;
+            return;
+        }
+
+        UpdateFocusTransition();
+        UpdatePointerDrag();
+    }
+
+    private void UpdateFocusTransition()
+    {
+        if (!isFocusing)
+        {
+            return;
+        }
+
+        focusElapsed += Time.deltaTime;
+        float progress = focusDuration <= 0f ? 1f : Mathf.Clamp01(focusElapsed / focusDuration);
+        float smoothedProgress = Mathf.SmoothStep(0f, 1f, progress);
+        focusPoint = Vector3.Lerp(focusStartPoint, targetFocusPoint, smoothedProgress);
+        ApplyCameraTransform();
+
+        if (progress >= 1f)
+        {
+            focusPoint = targetFocusPoint;
+            isFocusing = false;
+            ApplyCameraTransform();
+        }
+    }
+
+    private void UpdatePointerDrag()
+    {
         Mouse mouse = Mouse.current;
-        if (mouse == null || panCamera == null || field == null || !panCamera.orthographic)
+        if (mouse == null)
         {
             isDragging = false;
             return;
@@ -39,6 +124,10 @@ public sealed class FieldCameraPan : MonoBehaviour
         {
             isDragging = EventSystem.current == null || !EventSystem.current.IsPointerOverGameObject();
             previousPointerPosition = pointerPosition;
+            if (isDragging)
+            {
+                CancelFocusTransition();
+            }
         }
 
         if (mouse.rightButton.wasReleasedThisFrame)
@@ -53,17 +142,66 @@ public sealed class FieldCameraPan : MonoBehaviour
 
         Vector2 pointerDelta = pointerPosition - previousPointerPosition;
         previousPointerPosition = pointerPosition;
-        float worldUnitsPerPixel = panCamera.orthographicSize * 2f / Mathf.Max(1, Screen.height);
-        transform.position += new Vector3(
-            -pointerDelta.x * worldUnitsPerPixel,
-            0f,
-            -pointerDelta.y * worldUnitsPerPixel);
-        ClampToField();
+        if (pointerDelta.sqrMagnitude <= 0f)
+        {
+            return;
+        }
+
+        float worldUnitsPerPixel = 2f * focusDistance *
+                                   Mathf.Tan(fieldOfView * 0.5f * Mathf.Deg2Rad) /
+                                   Mathf.Max(1, Screen.height);
+        Vector3 groundRight = Vector3.ProjectOnPlane(transform.right, Vector3.up).normalized;
+        Vector3 groundForward = Vector3.ProjectOnPlane(transform.forward, Vector3.up).normalized;
+        Vector3 movement = (-groundRight * pointerDelta.x - groundForward * pointerDelta.y) *
+                           worldUnitsPerPixel * dragSensitivity;
+
+        focusPoint = ClampFocusPoint(focusPoint + movement);
+        targetFocusPoint = focusPoint;
+        ApplyCameraTransform();
     }
 
     private void EnsureCamera()
     {
         panCamera ??= GetComponent<Camera>();
+    }
+
+    private void EnsureInitialized()
+    {
+        EnsureCamera();
+        field ??= FindFirstObjectByType<FieldGenerator>();
+        if (!isInitialized && panCamera != null && field != null)
+        {
+            ApplyCameraSettings();
+            InitializeFocusFromTransform();
+        }
+    }
+
+    private void ApplyCameraSettings()
+    {
+        if (panCamera == null)
+        {
+            return;
+        }
+
+        panCamera.orthographic = false;
+        panCamera.fieldOfView = fieldOfView;
+        transform.rotation = Quaternion.Euler(pitchDegrees, yawDegrees, 0f);
+    }
+
+    private void InitializeFocusFromTransform()
+    {
+        if (panCamera == null || field == null)
+        {
+            return;
+        }
+
+        focusPoint = ClampFocusPoint(transform.position + transform.forward * focusDistance);
+        focusStartPoint = focusPoint;
+        targetFocusPoint = focusPoint;
+        focusElapsed = 0f;
+        isFocusing = false;
+        isInitialized = true;
+        ApplyCameraTransform();
     }
 
     private void SnapToPlayerSide()
@@ -73,39 +211,45 @@ public sealed class FieldCameraPan : MonoBehaviour
             return;
         }
 
-        Vector3 position = transform.position;
-        position.x = field.transform.position.x;
-        position.z = field.transform.position.z - field.Depth * FieldGenerator.CellSizeMeters * 0.5f + panCamera.orthographicSize;
-        transform.position = position;
-        ClampToField();
+        Vector3 center = field.transform.position;
+        float halfFieldDepth = field.Depth * FieldGenerator.CellSizeMeters * 0.5f;
+        float playerSideOffset = Mathf.Min(4f, halfFieldDepth);
+        focusPoint = new Vector3(center.x, center.y, center.z - halfFieldDepth + playerSideOffset);
+        focusPoint = ClampFocusPoint(focusPoint);
+        focusStartPoint = focusPoint;
+        targetFocusPoint = focusPoint;
+        focusElapsed = 0f;
+        isFocusing = false;
+        isInitialized = true;
+        ApplyCameraTransform();
     }
 
-    private void ClampToField()
+    private Vector3 ClampFocusPoint(Vector3 point)
     {
-        if (panCamera == null || field == null || !panCamera.orthographic)
+        if (field == null)
         {
-            return;
+            return point;
         }
 
         Vector3 center = field.transform.position;
         float halfFieldWidth = field.Width * FieldGenerator.CellSizeMeters * 0.5f;
         float halfFieldDepth = field.Depth * FieldGenerator.CellSizeMeters * 0.5f;
-        float halfViewDepth = panCamera.orthographicSize;
-        float halfViewWidth = halfViewDepth * Mathf.Max(0.01f, panCamera.aspect);
-
-        Vector3 position = transform.position;
-        position.x = ClampAxis(position.x, center.x, halfFieldWidth, halfViewWidth);
-        position.z = ClampAxis(position.z, center.z, halfFieldDepth, halfViewDepth);
-        transform.position = position;
+        point.x = Mathf.Clamp(point.x, center.x - halfFieldWidth, center.x + halfFieldWidth);
+        point.z = Mathf.Clamp(point.z, center.z - halfFieldDepth, center.z + halfFieldDepth);
+        return point;
     }
 
-    private static float ClampAxis(float value, float center, float halfField, float halfView)
+    private void CancelFocusTransition()
     {
-        if (halfView >= halfField)
-        {
-            return center;
-        }
+        isFocusing = false;
+        focusStartPoint = focusPoint;
+        targetFocusPoint = focusPoint;
+        focusElapsed = 0f;
+    }
 
-        return Mathf.Clamp(value, center - halfField + halfView, center + halfField - halfView);
+    private void ApplyCameraTransform()
+    {
+        transform.rotation = Quaternion.Euler(pitchDegrees, yawDegrees, 0f);
+        transform.position = focusPoint - transform.forward * focusDistance;
     }
 }

@@ -147,6 +147,51 @@ public static class FieldSceneSetup
         Debug.Log("XS Project: 20x30 field, distributed units, card-name UI, and right-drag camera pan configured.");
     }
 
+    [MenuItem("XS Project/Refresh Turn UI")]
+    public static void RefreshTurnUI()
+    {
+        Scene scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+        UnitSelectionController controller = Object.FindFirstObjectByType<UnitSelectionController>();
+        GameObject cardPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(CardPrefabPath);
+        if (controller == null || cardPrefab == null)
+        {
+            Debug.LogError("XS Project: UnitSelectionController 또는 카드 프리팹을 찾을 수 없어 턴 UI를 갱신하지 못했습니다.");
+            return;
+        }
+
+        GridUnit[] units = System.Array.FindAll(
+            Object.FindObjectsByType<GridUnit>(FindObjectsSortMode.None),
+            unit => unit != null && unit.IsPlayerControlled);
+        System.Array.Sort(units, (left, right) => left.UnitNumber.CompareTo(right.UnitNumber));
+
+        DestroySceneObject("TurnUI");
+        BuildTurnUI(controller, units, cardPrefab);
+        EnsureEventSystem();
+
+        EditorSceneManager.MarkSceneDirty(scene);
+        EditorSceneManager.SaveScene(scene);
+        AssetDatabase.SaveAssets();
+        Debug.Log("XS Project: unit AP status UI refreshed.");
+    }
+
+    [MenuItem("XS Project/Refresh Quarter View Camera")]
+    public static void RefreshQuarterViewCamera()
+    {
+        Scene scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+        FieldGenerator field = Object.FindFirstObjectByType<FieldGenerator>();
+        if (field == null)
+        {
+            Debug.LogError("XS Project: FieldGenerator를 찾을 수 없어 쿼터뷰 카메라를 갱신하지 못했습니다.");
+            return;
+        }
+
+        ConfigureCamera(field);
+        EditorSceneManager.MarkSceneDirty(scene);
+        EditorSceneManager.SaveScene(scene);
+        AssetDatabase.SaveAssets();
+        Debug.Log("XS Project: X-COM style quarter-view camera refreshed.");
+    }
+
     private static GameObject BuildUnitPrefab(
         string objectName,
         GridUnitTeam team,
@@ -358,32 +403,57 @@ public static class FieldSceneSetup
         turnText.text = "TURN 1";
         turnText.color = Color.white;
 
-        Image panel = CreateImage(canvasObject.transform, "UnitMovePanel", new Color(0.08f, 0.09f, 0.10f, 0.88f));
-        SetRect(panel.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(20f, -20f), new Vector2(250f, 236f));
+        Image panel = CreateImage(canvasObject.transform, "UnitStatusPanel", new Color(0.08f, 0.09f, 0.10f, 0.88f));
+        SetRect(panel.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(20f, -20f), new Vector2(300f, 250f));
+        CanvasGroup panelGroup = panel.gameObject.AddComponent<CanvasGroup>();
 
         Text header = CreateText(panel.transform, "Header", font, 22, TextAnchor.MiddleCenter);
-        SetRect(header.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -10f), new Vector2(220f, 42f));
-        header.text = "UNIT MOVE";
+        SetRect(header.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -10f), new Vector2(270f, 42f));
+        header.text = "UNIT";
         header.color = Color.white;
         header.raycastTarget = false;
 
-        Button[] statusButtons = new Button[units.Length];
+        UnitStatusView[] statusViews = new UnitStatusView[units.Length];
         for (int i = 0; i < units.Length; i++)
         {
             Image row = CreateImage(panel.transform, $"UnitStatus_{i + 1}", new Color(0.28f, 0.30f, 0.32f, 0.94f));
-            SetRect(row.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -58f - i * 56f), new Vector2(218f, 46f));
+            SetRect(row.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -58f - i * 58f), new Vector2(268f, 48f));
             Button statusButton = row.gameObject.AddComponent<Button>();
             statusButton.targetGraphic = row;
             statusButton.transition = Selectable.Transition.None;
 
+            Outline selectionOutline = row.gameObject.AddComponent<Outline>();
+            selectionOutline.effectColor = new Color(1f, 0.78f, 0.16f, 1f);
+            selectionOutline.effectDistance = new Vector2(3f, -3f);
+            selectionOutline.useGraphicAlpha = false;
+            selectionOutline.enabled = false;
+
             Text label = CreateText(row.transform, "Label", font, 20, TextAnchor.MiddleLeft);
             SetRect(label.rectTransform, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
             label.rectTransform.offsetMin = new Vector2(16f, 0f);
-            label.rectTransform.offsetMax = new Vector2(-12f, 0f);
-            label.text = $"UNIT {units[i].UnitNumber}  MOVE";
+            label.rectTransform.offsetMax = new Vector2(-112f, 0f);
+            label.text = units[i].DisplayName.ToUpperInvariant();
             label.color = Color.white;
             label.raycastTarget = false;
-            statusButtons[i] = statusButton;
+
+            Image[] actionPointSlots = new Image[GridUnit.MaxActionPoints];
+            for (int actionPoint = 0; actionPoint < actionPointSlots.Length; actionPoint++)
+            {
+                Image slot = CreateImage(row.transform, $"AP_{actionPoint + 1}", new Color(0.31f, 0.61f, 0.88f, 1f));
+                SetRect(
+                    slot.rectTransform,
+                    new Vector2(1f, 0.5f),
+                    new Vector2(1f, 0.5f),
+                    new Vector2(1f, 0.5f),
+                    new Vector2(-12f - (actionPointSlots.Length - 1 - actionPoint) * 48f, 0f),
+                    new Vector2(40f, 32f));
+                slot.raycastTarget = false;
+                actionPointSlots[actionPoint] = slot;
+            }
+
+            UnitStatusView statusView = row.gameObject.AddComponent<UnitStatusView>();
+            statusView.Configure(statusButton, row, label, actionPointSlots, selectionOutline);
+            statusViews[i] = statusView;
         }
 
         Image buttonImage = CreateImage(canvasObject.transform, "EndTurnButton", new Color(0.22f, 0.24f, 0.27f, 0.98f));
@@ -427,7 +497,7 @@ public static class FieldSceneSetup
 
         CardView[] cards = BuildCardUI(canvasObject.transform, font, cardPrefab);
 
-        controller.ConfigureUI(turnText, endTurnButton, statusButtons, cards, costPanel, costText);
+        controller.ConfigureUI(turnText, endTurnButton, panelGroup, statusViews, cards, costPanel, costText);
     }
 
     private static CardView[] BuildCardUI(Transform canvasRoot, Font font, GameObject cardPrefab)
@@ -672,10 +742,8 @@ public static class FieldSceneSetup
             cameraObject.AddComponent<AudioListener>();
         }
 
-        camera.transform.position = new Vector3(0f, 12f, 0f);
-        camera.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
-        camera.orthographic = true;
-        camera.orthographicSize = 2.875f;
+        camera.orthographic = false;
+        camera.fieldOfView = 42f;
         camera.nearClipPlane = 0.1f;
         camera.farClipPlane = 100f;
         camera.clearFlags = CameraClearFlags.SolidColor;

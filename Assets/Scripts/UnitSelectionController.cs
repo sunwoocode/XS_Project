@@ -8,14 +8,12 @@ using UnityEngine.UI;
 
 public sealed class UnitSelectionController : MonoBehaviour
 {
-    private static readonly Color AvailableColor = new(0.28f, 0.30f, 0.32f, 0.94f);
-    private static readonly Color MovedColor = new(0.72f, 0.12f, 0.12f, 0.96f);
-    private static readonly Color SelectedColor = new(0.82f, 0.62f, 0.12f, 0.98f);
     private static readonly Color CostAvailableColor = new(0.10f, 0.36f, 0.62f, 0.96f);
     private static readonly Color CostWaitingColor = new(0.16f, 0.18f, 0.21f, 0.82f);
 
     [SerializeField] private FieldGenerator field;
     [SerializeField] private Camera selectionCamera;
+    [SerializeField] private FieldCameraPan fieldCameraPan;
     [SerializeField] private GridUnit[] units = System.Array.Empty<GridUnit>();
     [SerializeField, Min(1)] private int movementRange = 3;
     [SerializeField, Min(0.01f)] private float secondsPerCell = 0.12f;
@@ -26,10 +24,10 @@ public sealed class UnitSelectionController : MonoBehaviour
     [SerializeField] private Button endTurnButton;
     [SerializeField] private Image cardCostPanel;
     [SerializeField] private Text cardCostText;
-    [SerializeField] private Button[] unitStatusButtons = System.Array.Empty<Button>();
+    [SerializeField] private CanvasGroup unitStatusPanelGroup;
+    [SerializeField] private UnitStatusView[] unitStatusViews = System.Array.Empty<UnitStatusView>();
     [SerializeField] private CardView[] cards = System.Array.Empty<CardView>();
 
-    private readonly HashSet<GridUnit> movedUnits = new();
     private GridUnit selectedUnit;
     private int selectedCardIndex = -1;
     private UnityAction[] unitButtonActions = System.Array.Empty<UnityAction>();
@@ -46,20 +44,23 @@ public sealed class UnitSelectionController : MonoBehaviour
     {
         field = targetField;
         selectionCamera = targetCamera;
+        fieldCameraPan = targetCamera != null ? targetCamera.GetComponent<FieldCameraPan>() : null;
         units = controlledUnits ?? System.Array.Empty<GridUnit>();
     }
 
     public void ConfigureUI(
         Text targetTurnText,
         Button targetEndTurnButton,
-        Button[] statusButtons,
+        CanvasGroup targetUnitStatusPanelGroup,
+        UnitStatusView[] statusViews,
         CardView[] handCards,
         Image targetCardCostPanel,
         Text targetCardCostText)
     {
         turnText = targetTurnText;
         endTurnButton = targetEndTurnButton;
-        unitStatusButtons = statusButtons ?? System.Array.Empty<Button>();
+        unitStatusPanelGroup = targetUnitStatusPanelGroup;
+        unitStatusViews = statusViews ?? System.Array.Empty<UnitStatusView>();
         cards = handCards ?? System.Array.Empty<CardView>();
         cardCostPanel = targetCardCostPanel;
         cardCostText = targetCardCostText;
@@ -70,6 +71,7 @@ public sealed class UnitSelectionController : MonoBehaviour
     {
         field ??= FindFirstObjectByType<FieldGenerator>();
         selectionCamera ??= Camera.main;
+        fieldCameraPan ??= selectionCamera != null ? selectionCamera.GetComponent<FieldCameraPan>() : null;
         if (units == null || units.Length == 0)
         {
             units = FindObjectsByType<GridUnit>(FindObjectsSortMode.None);
@@ -80,6 +82,7 @@ public sealed class UnitSelectionController : MonoBehaviour
     private void Start()
     {
         remainingCardCost = maxCardCost;
+        ResetControlledUnitActionPoints();
         if (endTurnButton != null)
         {
             endTurnButton.onClick.RemoveListener(EndPlayerTurn);
@@ -155,15 +158,7 @@ public sealed class UnitSelectionController : MonoBehaviour
         GridUnit clickedUnit = hit.collider.GetComponentInParent<GridUnit>();
         if (clickedUnit != null)
         {
-            if (clickedUnit.IsPlayerControlled && movedUnits.Contains(clickedUnit))
-            {
-                CancelUnitSelection();
-            }
-            else
-            {
-                SelectUnit(clickedUnit);
-            }
-
+            SelectUnit(clickedUnit);
             return;
         }
 
@@ -178,8 +173,10 @@ public sealed class UnitSelectionController : MonoBehaviour
         }
 
         if (field.TryGetCell(hit.point, out Vector2Int targetCell) &&
-            field.TryBuildPath(targetCell, out List<Vector2Int> path))
+            field.TryBuildPath(targetCell, out List<Vector2Int> path) &&
+            selectedUnit.TrySpendActionPoint())
         {
+            RefreshUI();
             StartCoroutine(MoveSelectedUnit(path));
         }
     }
@@ -208,7 +205,7 @@ public sealed class UnitSelectionController : MonoBehaviour
         }
 
         GridUnit unit = units[index];
-        if (unit == null || !IsControlledUnit(unit) || movedUnits.Contains(unit))
+        if (unit == null || !IsControlledUnit(unit))
         {
             return;
         }
@@ -264,6 +261,13 @@ public sealed class UnitSelectionController : MonoBehaviour
     private void SelectUnit(GridUnit unit)
     {
         selectedUnit = unit;
+        if (!CanMoveSelectedUnit())
+        {
+            field?.ClearHighlights();
+            RefreshUI();
+            return;
+        }
+
         HashSet<Vector2Int> blockedCells = new();
         GridObstacle[] obstacles = FindObjectsByType<GridObstacle>(FindObjectsSortMode.None);
         foreach (GridObstacle obstacle in obstacles)
@@ -313,7 +317,6 @@ public sealed class UnitSelectionController : MonoBehaviour
             movingUnit.transform.position = targetPosition;
         }
 
-        movedUnits.Add(movingUnit);
         isMoving = false;
         CancelUnitSelection();
         RefreshUI();
@@ -336,7 +339,7 @@ public sealed class UnitSelectionController : MonoBehaviour
         yield return new WaitForSeconds(opponentTurnSeconds);
 
         currentTurn++;
-        movedUnits.Clear();
+        ResetControlledUnitActionPoints();
         remainingCardCost = maxCardCost;
         isPlayerTurn = true;
         RefreshUI();
@@ -365,7 +368,7 @@ public sealed class UnitSelectionController : MonoBehaviour
     {
         return selectedUnit != null &&
                IsControlledUnit(selectedUnit) &&
-               !movedUnits.Contains(selectedUnit);
+               selectedUnit.RemainingActionPoints > 0;
     }
 
     private void RefreshUI()
@@ -391,32 +394,36 @@ public sealed class UnitSelectionController : MonoBehaviour
             cardCostPanel.color = isPlayerTurn ? CostAvailableColor : CostWaitingColor;
         }
 
-        if (unitStatusButtons == null)
+        if (unitStatusPanelGroup != null)
+        {
+            unitStatusPanelGroup.alpha = isPlayerTurn ? 1f : 0.48f;
+            unitStatusPanelGroup.interactable = isPlayerTurn && !isMoving;
+            unitStatusPanelGroup.blocksRaycasts = isPlayerTurn && !isMoving;
+        }
+
+        if (unitStatusViews == null)
         {
             return;
         }
 
         int unitCount = units?.Length ?? 0;
-        for (int i = 0; i < unitStatusButtons.Length; i++)
+        for (int i = 0; i < unitStatusViews.Length; i++)
         {
-            Button statusButton = unitStatusButtons[i];
-            if (statusButton == null)
+            UnitStatusView statusView = unitStatusViews[i];
+            if (statusView == null)
             {
                 continue;
             }
 
             GridUnit unit = i < unitCount ? units[i] : null;
-            bool hasMoved = unit != null && movedUnits.Contains(unit);
-            bool isAvailable = unit != null && IsControlledUnit(unit) && !hasMoved;
-            statusButton.interactable = isPlayerTurn && !isMoving && isAvailable;
-            statusButton.image.color = hasMoved
-                ? MovedColor
-                : unit == selectedUnit ? SelectedColor : AvailableColor;
+            bool canSelect = isPlayerTurn && !isMoving && unit != null && IsControlledUnit(unit);
+            statusView.Refresh(unit, unit == selectedUnit, canSelect);
         }
     }
 
     private bool HandleKeyboardShortcuts(Keyboard keyboard)
     {
+        if (keyboard.spaceKey.wasPressedThisFrame && FocusSelectedUnit()) { return true; }
         if (keyboard.digit1Key.wasPressedThisFrame || keyboard.numpad1Key.wasPressedThisFrame) { SelectCardByIndex(0); return true; }
         if (keyboard.digit2Key.wasPressedThisFrame || keyboard.numpad2Key.wasPressedThisFrame) { SelectCardByIndex(1); return true; }
         if (keyboard.digit3Key.wasPressedThisFrame || keyboard.numpad3Key.wasPressedThisFrame) { SelectCardByIndex(2); return true; }
@@ -428,13 +435,25 @@ public sealed class UnitSelectionController : MonoBehaviour
         return false;
     }
 
+    private bool FocusSelectedUnit()
+    {
+        if (selectedUnit == null || fieldCameraPan == null)
+        {
+            return false;
+        }
+
+        Vector3 visualCenter = selectedUnit.transform.position + Vector3.up * (GridUnit.HeightMeters * 0.5f);
+        fieldCameraPan.FocusOn(visualCenter);
+        return true;
+    }
+
     private void BindSelectionUI()
     {
         UnbindUnitButtons();
-        unitButtonActions = new UnityAction[unitStatusButtons.Length];
-        for (int i = 0; i < unitStatusButtons.Length; i++)
+        unitButtonActions = new UnityAction[unitStatusViews.Length];
+        for (int i = 0; i < unitStatusViews.Length; i++)
         {
-            Button button = unitStatusButtons[i];
+            Button button = unitStatusViews[i]?.SelectionButton;
             if (button == null)
             {
                 continue;
@@ -454,14 +473,14 @@ public sealed class UnitSelectionController : MonoBehaviour
 
     private void UnbindUnitButtons()
     {
-        if (unitStatusButtons == null || unitButtonActions == null)
+        if (unitStatusViews == null || unitButtonActions == null)
         {
             return;
         }
 
-        for (int i = 0; i < unitStatusButtons.Length && i < unitButtonActions.Length; i++)
+        for (int i = 0; i < unitStatusViews.Length && i < unitButtonActions.Length; i++)
         {
-            Button button = unitStatusButtons[i];
+            Button button = unitStatusViews[i]?.SelectionButton;
             UnityAction action = unitButtonActions[i];
             if (button != null && action != null)
             {
@@ -470,6 +489,22 @@ public sealed class UnitSelectionController : MonoBehaviour
         }
 
         unitButtonActions = System.Array.Empty<UnityAction>();
+    }
+
+    private void ResetControlledUnitActionPoints()
+    {
+        if (units == null)
+        {
+            return;
+        }
+
+        foreach (GridUnit unit in units)
+        {
+            if (unit != null && IsControlledUnit(unit))
+            {
+                unit.ResetActionPoints();
+            }
+        }
     }
 
     private void CancelUnitSelection()
