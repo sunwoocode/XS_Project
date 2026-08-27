@@ -8,7 +8,7 @@ using UnityEngine.UI;
 
 public static class FieldSceneSetup
 {
-    private const string ScenePath = "Assets/Scenes/SampleScene.unity";
+    private const string ScenePath = "Assets/Scenes/MainScene.unity";
     private const string CardCsvPath = "Assets/Resources/CardData/cards.csv";
     private const string MaterialFolder = "Assets/Materials";
     private const string PrefabFolder = "Assets/Prefabs";
@@ -229,6 +229,36 @@ public static class FieldSceneSetup
         EditorSceneManager.SaveScene(scene);
         AssetDatabase.SaveAssets();
         Debug.Log("XS Project: unit AP status UI refreshed.");
+    }
+
+    [MenuItem("XS Project/Refresh Battle Settings Menu")]
+    public static void RefreshBattleSettingsMenu()
+    {
+        Scene scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+        GameObject turnUI = GameObject.Find("TurnUI");
+        UnitSelectionController controller = Object.FindFirstObjectByType<UnitSelectionController>();
+        FieldCameraPan cameraPan = Object.FindFirstObjectByType<FieldCameraPan>();
+        Canvas canvas = turnUI != null ? turnUI.GetComponent<Canvas>() : null;
+        if (canvas == null || controller == null || cameraPan == null)
+        {
+            Debug.LogError("XS Project: TurnUI, UnitSelectionController 또는 FieldCameraPan을 찾지 못해 설정 메뉴를 갱신하지 못했습니다.");
+            return;
+        }
+
+        Transform existingMenu = turnUI.transform.Find("BattleSettingsMenu");
+        if (existingMenu != null)
+        {
+            Object.DestroyImmediate(existingMenu.gameObject);
+        }
+
+        Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        BuildBattleSettingsMenu(turnUI.transform, font, controller, cameraPan);
+        EnsureEventSystem();
+
+        EditorSceneManager.MarkSceneDirty(scene);
+        EditorSceneManager.SaveScene(scene);
+        AssetDatabase.SaveAssets();
+        Debug.Log("XS Project: MainScene ESC settings menu refreshed.");
     }
 
     [MenuItem("XS Project/Refresh Quarter View Camera")]
@@ -568,6 +598,99 @@ public static class FieldSceneSetup
             costPanel,
             costText,
             selectionDetailView);
+
+        FieldCameraPan cameraPan = Object.FindFirstObjectByType<FieldCameraPan>();
+        BuildBattleSettingsMenu(canvasObject.transform, font, controller, cameraPan);
+    }
+
+    private static BattleSettingsMenu BuildBattleSettingsMenu(
+        Transform canvasRoot,
+        Font font,
+        UnitSelectionController controller,
+        FieldCameraPan cameraPan)
+    {
+        RectTransform menuRoot = CreateRectContainer(canvasRoot, "BattleSettingsMenu");
+        SetRect(menuRoot, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+
+        Image overlay = CreateImage(menuRoot, "Overlay", new Color(0.015f, 0.02f, 0.025f, 0.78f));
+        SetRect(overlay.rectTransform, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+        overlay.raycastTarget = true;
+
+        Image panel = CreateImage(overlay.transform, "SettingsPanel", new Color(0.08f, 0.09f, 0.10f, 0.98f));
+        SetRect(
+            panel.rectTransform,
+            new Vector2(0.5f, 0.5f),
+            new Vector2(0.5f, 0.5f),
+            new Vector2(0.5f, 0.5f),
+            Vector2.zero,
+            new Vector2(440f, 360f));
+
+        Outline panelOutline = panel.gameObject.AddComponent<Outline>();
+        panelOutline.effectColor = new Color(1f, 0.78f, 0.16f, 1f);
+        panelOutline.effectDistance = new Vector2(3f, -3f);
+        panelOutline.useGraphicAlpha = false;
+
+        Text title = CreateText(panel.transform, "Title", font, 42, TextAnchor.MiddleCenter);
+        SetRect(
+            title.rectTransform,
+            new Vector2(0.5f, 1f),
+            new Vector2(0.5f, 1f),
+            new Vector2(0.5f, 1f),
+            new Vector2(0f, -38f),
+            new Vector2(380f, 72f));
+        title.text = "SETTINGS";
+        title.color = Color.white;
+        title.fontStyle = FontStyle.Bold;
+        title.raycastTarget = false;
+
+        Button resumeButton = CreateSettingsMenuButton(panel.transform, font, "ResumeButton", "RESUME", new Vector2(0f, 20f));
+        Button lobbyButton = CreateSettingsMenuButton(panel.transform, font, "LobbyButton", "LOBBY", new Vector2(0f, -82f));
+
+        BattleSettingsMenu settingsMenu = menuRoot.gameObject.AddComponent<BattleSettingsMenu>();
+        settingsMenu.Configure(overlay.gameObject, resumeButton, lobbyButton, controller, cameraPan);
+        overlay.gameObject.SetActive(false);
+        menuRoot.SetAsLastSibling();
+        return settingsMenu;
+    }
+
+    private static Button CreateSettingsMenuButton(
+        Transform parent,
+        Font font,
+        string objectName,
+        string labelText,
+        Vector2 position)
+    {
+        Image buttonImage = CreateImage(parent, objectName, new Color(0.22f, 0.24f, 0.27f, 1f));
+        SetRect(
+            buttonImage.rectTransform,
+            new Vector2(0.5f, 0.5f),
+            new Vector2(0.5f, 0.5f),
+            new Vector2(0.5f, 0.5f),
+            position,
+            new Vector2(280f, 76f));
+
+        Outline outline = buttonImage.gameObject.AddComponent<Outline>();
+        outline.effectColor = new Color(1f, 0.78f, 0.16f, 1f);
+        outline.effectDistance = new Vector2(3f, -3f);
+        outline.useGraphicAlpha = false;
+
+        Button button = buttonImage.gameObject.AddComponent<Button>();
+        button.targetGraphic = buttonImage;
+        ColorBlock colors = button.colors;
+        colors.normalColor = Color.white;
+        colors.highlightedColor = new Color(1.3f, 1.3f, 1.3f, 1f);
+        colors.selectedColor = new Color(1.3f, 1.3f, 1.3f, 1f);
+        colors.pressedColor = new Color(0.68f, 0.70f, 0.74f, 1f);
+        colors.disabledColor = new Color(0.45f, 0.45f, 0.45f, 0.6f);
+        button.colors = colors;
+
+        Text label = CreateText(buttonImage.transform, "Label", font, 28, TextAnchor.MiddleCenter);
+        SetRect(label.rectTransform, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+        label.text = labelText;
+        label.color = Color.white;
+        label.fontStyle = FontStyle.Bold;
+        label.raycastTarget = false;
+        return button;
     }
 
     private static UnitSelectionDetailView BuildUnitSelectionDetailUI(Transform canvasRoot, Font font)

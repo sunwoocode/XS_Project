@@ -12,7 +12,7 @@ public static class MenuSceneSetup
 {
     private const string TitleScenePath = "Assets/Scenes/TitleScene.unity";
     private const string LobbyScenePath = "Assets/Scenes/LobbyScene.unity";
-    private const string BattleScenePath = "Assets/Scenes/SampleScene.unity";
+    private const string BattleScenePath = "Assets/Scenes/MainScene.unity";
 
     private static readonly Color BackgroundColor = new(0.055f, 0.065f, 0.075f, 1f);
     private static readonly Color PanelColor = new(0.08f, 0.09f, 0.10f, 0.96f);

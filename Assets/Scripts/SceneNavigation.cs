@@ -4,7 +4,7 @@ using UnityEngine.SceneManagement;
 public sealed class SceneNavigation : MonoBehaviour
 {
     private const string LobbySceneName = "LobbyScene";
-    private const string BattleSceneName = "SampleScene";
+    private const string BattleSceneName = "MainScene";
 
     public void OpenLobby()
     {
