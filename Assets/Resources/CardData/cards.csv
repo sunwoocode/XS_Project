@@ -1,6 +1,12 @@
-Index,cardName,tagPoint,cost,imagePath,effectText,raceColor
-001,카드,1,1,,카드의 효과를 사용합니다.,179|175|175
-002,카드,2,2,,무작위 카드의 효과를 사용합니다.,179|175|175
-101,카드,1,2,CardImg,이 카드를 파괴합니다.,248|139|124
-102,카드,3,2,CardImg,턴 종료 시 이 유닛이 폭발합니다.,248|139|124
-103,카드,4,3,CardImg,턴 종료 시 상대에게 항복합니다.,248|139|124
+Index,cardName,HumanType,tagPoint,cost,imagePath,effectText,raceColor
+001,,Neutral,1,1,Neutral_001,카드의 효과를 사용합니다.,179|175|175
+002,,Neutral,2,2,Neutral_001,무작위 카드의 효과를 사용합니다.,179|175|175
+101,지구에서 날라온 폭발,Earthling,1,2,Earthsapiens_001,이 유닛를 파괴합니다.,248|139|124
+102,지구인의 염원,Earthling,3,2,Earthsapiens_001,이 유닛의 회피율이 3×TP 만큼 상승한다. 조건: [지구인의 희망],248|139|124
+103,,Earthling,4,3,Earthsapiens_001,턴 종료 시 상대에게 항복합니다.,248|139|124
+,,,,,,,
+,,,,,,,
+,,,,,,,
+,,,,,,,
+,,,,,,,
+,,,,,,,

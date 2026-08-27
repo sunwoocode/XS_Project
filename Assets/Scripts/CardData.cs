@@ -32,7 +32,9 @@ public sealed class CardData
         Color? raceColor = null)
     {
         Index = index?.Trim() ?? string.Empty;
-        CardName = string.IsNullOrWhiteSpace(cardName) ? DefaultCardName : cardName.Trim();
+        CardName = string.IsNullOrWhiteSpace(cardName)
+            ? (string.IsNullOrEmpty(Index) ? DefaultCardName : Index)
+            : cardName.Trim();
         TagPoint = Mathf.Max(0, tagPoint);
         Cost = Mathf.Max(0, cost);
         ImagePath = imagePath?.Trim() ?? string.Empty;
@@ -86,7 +88,7 @@ public static class CardCsvParser
                 continue;
             }
 
-            string cardName = GetValue(record, columns, "cardName", CardData.DefaultCardName, warning, true).Trim();
+            string cardName = GetValue(record, columns, "cardName", index, warning, true).Trim();
             int tagPoint = ParseNonNegativeInt(record, columns, "tagPoint", CardData.DefaultTagPoint, warning);
             int cost = ParseNonNegativeInt(record, columns, "cost", CardData.DefaultCost, warning);
             string imagePath = GetValue(record, columns, "imagePath", string.Empty, warning, false).Trim();

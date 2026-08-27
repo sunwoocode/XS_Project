@@ -7,7 +7,7 @@ public sealed class CardCsvLoader : MonoBehaviour
     private const string DefaultCsvResourcePath = "CardData/cards";
     private const float HandWidth = 720f;
     private const float CardWidth = 164f;
-    private const float CardHeight = 226f;
+    private const float CardHeight = 268f;
     private const float MaximumSpacing = 110f;
     private const int HandSize = 3;
 
@@ -136,7 +136,7 @@ public sealed class CardCsvLoader : MonoBehaviour
 
             float normalized = data.Count <= 1 ? 0f : i * 2f / (data.Count - 1f) - 1f;
             float x = (i - (data.Count - 1f) * 0.5f) * spacing;
-            float y = 38f - 30f * Mathf.Abs(normalized);
+            float y = -CardHeight * (2f / 3f);
             rect.anchoredPosition = new Vector2(x, y);
             rect.localRotation = Quaternion.Euler(0f, 0f, -10f * normalized);
             rect.localScale = Vector3.one;

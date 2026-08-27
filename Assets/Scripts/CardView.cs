@@ -7,6 +7,9 @@ using UnityEngine.UI;
 public sealed class CardView : MonoBehaviour, IPointerClickHandler
 {
     private const string CardImageResourceFolder = "CardImages/";
+    private const float FrameColorMultiplier = 0.62f;
+    private const float BodyNeutralBlend = 0.45f;
+    private static readonly Color BodyNeutralColor = new(0.82f, 0.82f, 0.82f, 1f);
     private static readonly Dictionary<string, Sprite> ArtworkCache = new(StringComparer.Ordinal);
     private static readonly HashSet<string> MissingArtworkWarnings = new(StringComparer.Ordinal);
 
@@ -20,6 +23,7 @@ public sealed class CardView : MonoBehaviour, IPointerClickHandler
 
     [Header("View References")]
     [SerializeField] private Image backgroundImage;
+    [SerializeField] private Image effectBackgroundImage;
     [SerializeField] private Text cardNameText;
     [SerializeField] private Text tagPointText;
     [SerializeField] private Text costText;
@@ -30,6 +34,8 @@ public sealed class CardView : MonoBehaviour, IPointerClickHandler
 
     private UnitSelectionController selectionController;
     private int handIndex = -1;
+    private bool defaultRaycastTarget;
+    private bool hasCachedRaycastTarget;
 
     public int TagPoint => tagPoint;
     public int Cost => cost;
@@ -55,6 +61,7 @@ public sealed class CardView : MonoBehaviour, IPointerClickHandler
 
     public void SetViewReferences(
         Image newBackgroundImage,
+        Image newEffectBackgroundImage,
         Text newCardNameText,
         Text newTagPointText,
         Text newCostText,
@@ -62,6 +69,9 @@ public sealed class CardView : MonoBehaviour, IPointerClickHandler
         Text newEffectDescriptionText)
     {
         backgroundImage = newBackgroundImage;
+        hasCachedRaycastTarget = false;
+        CacheDefaultRaycastTarget();
+        effectBackgroundImage = newEffectBackgroundImage;
         cardNameText = newCardNameText;
         tagPointText = newTagPointText;
         costText = newCostText;
@@ -85,14 +95,37 @@ public sealed class CardView : MonoBehaviour, IPointerClickHandler
 
     public void SetSelected(bool selected)
     {
+        ApplySelectionState(selected, null);
+    }
+
+    public void SetSelected(bool selected, Vector2 screenPosition)
+    {
+        ApplySelectionState(selected, screenPosition);
+    }
+
+    private void ApplySelectionState(bool selected, Vector2? screenPosition)
+    {
         if (selectionOutline != null)
         {
-            selectionOutline.enabled = selected;
+            selectionOutline.enabled = false;
+        }
+
+        CacheDefaultRaycastTarget();
+        if (backgroundImage != null)
+        {
+            backgroundImage.raycastTarget = selected ? false : defaultRaycastTarget;
         }
 
         if (hoverUI != null)
         {
-            hoverUI.SetSelected(selected);
+            if (screenPosition.HasValue)
+            {
+                hoverUI.SetSelected(selected, screenPosition.Value);
+            }
+            else
+            {
+                hoverUI.SetSelected(selected);
+            }
         }
     }
 
@@ -100,13 +133,36 @@ public sealed class CardView : MonoBehaviour, IPointerClickHandler
     {
         if (eventData.button == PointerEventData.InputButton.Left && selectionController != null)
         {
-            selectionController.SelectCardByIndex(handIndex);
+            selectionController.SelectCardByIndex(handIndex, eventData.position);
         }
     }
 
     private void Awake()
     {
+        CacheDefaultRaycastTarget();
         Refresh();
+    }
+
+    private void OnDisable()
+    {
+        if (selectionOutline != null)
+        {
+            selectionOutline.enabled = false;
+        }
+
+        if (backgroundImage != null && hasCachedRaycastTarget)
+        {
+            backgroundImage.raycastTarget = defaultRaycastTarget;
+        }
+    }
+
+    private void CacheDefaultRaycastTarget()
+    {
+        if (!hasCachedRaycastTarget && backgroundImage != null)
+        {
+            defaultRaycastTarget = backgroundImage.raycastTarget;
+            hasCachedRaycastTarget = true;
+        }
     }
 
     private void OnValidate()
@@ -122,7 +178,12 @@ public sealed class CardView : MonoBehaviour, IPointerClickHandler
     {
         if (backgroundImage != null)
         {
-            backgroundImage.color = raceColor;
+            backgroundImage.color = GetFrameColor(raceColor);
+        }
+
+        if (effectBackgroundImage != null)
+        {
+            effectBackgroundImage.color = GetBodyColor(raceColor);
         }
 
         if (cardNameText != null)
@@ -152,6 +213,23 @@ public sealed class CardView : MonoBehaviour, IPointerClickHandler
             artworkImage.enabled = artwork != null;
             artworkImage.preserveAspect = true;
         }
+    }
+
+    private static Color GetFrameColor(Color source)
+    {
+        return new Color(
+            Mathf.Clamp01(source.r * FrameColorMultiplier),
+            Mathf.Clamp01(source.g * FrameColorMultiplier),
+            Mathf.Clamp01(source.b * FrameColorMultiplier),
+            1f);
+    }
+
+    private static Color GetBodyColor(Color source)
+    {
+        source.a = 1f;
+        Color bodyColor = Color.Lerp(source, BodyNeutralColor, BodyNeutralBlend);
+        bodyColor.a = 1f;
+        return bodyColor;
     }
 
     private Sprite LoadArtwork(string configuredPath)

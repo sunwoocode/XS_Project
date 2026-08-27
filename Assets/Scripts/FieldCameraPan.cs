@@ -120,7 +120,7 @@ public sealed class FieldCameraPan : MonoBehaviour
         }
 
         Vector2 pointerPosition = mouse.position.ReadValue();
-        if (mouse.rightButton.wasPressedThisFrame)
+        if (mouse.middleButton.wasPressedThisFrame)
         {
             isDragging = EventSystem.current == null || !EventSystem.current.IsPointerOverGameObject();
             previousPointerPosition = pointerPosition;
@@ -130,12 +130,12 @@ public sealed class FieldCameraPan : MonoBehaviour
             }
         }
 
-        if (mouse.rightButton.wasReleasedThisFrame)
+        if (mouse.middleButton.wasReleasedThisFrame)
         {
             isDragging = false;
         }
 
-        if (!isDragging || !mouse.rightButton.isPressed)
+        if (!isDragging || !mouse.middleButton.isPressed)
         {
             return;
         }

@@ -26,6 +26,7 @@ public sealed class UnitSelectionController : MonoBehaviour
     [SerializeField] private Text cardCostText;
     [SerializeField] private CanvasGroup unitStatusPanelGroup;
     [SerializeField] private UnitStatusView[] unitStatusViews = System.Array.Empty<UnitStatusView>();
+    [SerializeField] private UnitSelectionDetailView unitSelectionDetailView;
     [SerializeField] private CardView[] cards = System.Array.Empty<CardView>();
 
     private GridUnit selectedUnit;
@@ -57,6 +58,27 @@ public sealed class UnitSelectionController : MonoBehaviour
         Image targetCardCostPanel,
         Text targetCardCostText)
     {
+        ConfigureUI(
+            targetTurnText,
+            targetEndTurnButton,
+            targetUnitStatusPanelGroup,
+            statusViews,
+            handCards,
+            targetCardCostPanel,
+            targetCardCostText,
+            unitSelectionDetailView);
+    }
+
+    public void ConfigureUI(
+        Text targetTurnText,
+        Button targetEndTurnButton,
+        CanvasGroup targetUnitStatusPanelGroup,
+        UnitStatusView[] statusViews,
+        CardView[] handCards,
+        Image targetCardCostPanel,
+        Text targetCardCostText,
+        UnitSelectionDetailView targetUnitSelectionDetailView)
+    {
         turnText = targetTurnText;
         endTurnButton = targetEndTurnButton;
         unitStatusPanelGroup = targetUnitStatusPanelGroup;
@@ -64,6 +86,7 @@ public sealed class UnitSelectionController : MonoBehaviour
         cards = handCards ?? System.Array.Empty<CardView>();
         cardCostPanel = targetCardCostPanel;
         cardCostText = targetCardCostText;
+        unitSelectionDetailView = targetUnitSelectionDetailView;
         RefreshUI();
     }
 
@@ -117,9 +140,10 @@ public sealed class UnitSelectionController : MonoBehaviour
     private void Update()
     {
         Keyboard keyboard = Keyboard.current;
-        if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame)
+        Mouse mouse = Mouse.current;
+        if (mouse != null && mouse.rightButton.wasPressedThisFrame && selectedCardIndex >= 0)
         {
-            ClearAllSelections();
+            ClearSelectedCard();
             return;
         }
 
@@ -133,7 +157,6 @@ public sealed class UnitSelectionController : MonoBehaviour
             return;
         }
 
-        Mouse mouse = Mouse.current;
         if (mouse == null || !mouse.leftButton.wasPressedThisFrame)
         {
             return;
@@ -215,17 +238,25 @@ public sealed class UnitSelectionController : MonoBehaviour
 
     public void SelectCardByIndex(int index)
     {
+        Vector2 screenPosition = Mouse.current != null
+            ? Mouse.current.position.ReadValue()
+            : new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
+        SelectCardByIndex(index, screenPosition);
+    }
+
+    public void SelectCardByIndex(int index, Vector2 screenPosition)
+    {
         if (!isPlayerTurn || isMoving || index < 0 || index >= cards.Length || cards[index] == null)
         {
             return;
         }
 
         int nextIndex = selectedCardIndex == index ? -1 : index;
-        ClearCardSelection();
+        ClearSelectedCard();
         if (nextIndex >= 0)
         {
             selectedCardIndex = nextIndex;
-            cards[selectedCardIndex].SetSelected(true);
+            cards[selectedCardIndex].SetSelected(true, screenPosition);
         }
     }
 
@@ -248,7 +279,7 @@ public sealed class UnitSelectionController : MonoBehaviour
 
     public void SetCards(CardView[] handCards)
     {
-        ClearCardSelection();
+        ClearSelectedCard();
         cards = handCards ?? System.Array.Empty<CardView>();
         for (int i = 0; i < cards.Length; i++)
         {
@@ -260,11 +291,23 @@ public sealed class UnitSelectionController : MonoBehaviour
 
     private void SelectUnit(GridUnit unit)
     {
+        if (unit == selectedUnit)
+        {
+            CancelUnitSelection();
+            return;
+        }
+
         selectedUnit = unit;
+        FocusSelectedUnit();
+        RefreshSelectedUnitMovementRange();
+        RefreshUI();
+    }
+
+    private void RefreshSelectedUnitMovementRange()
+    {
         if (!CanMoveSelectedUnit())
         {
             field?.ClearHighlights();
-            RefreshUI();
             return;
         }
 
@@ -281,15 +324,14 @@ public sealed class UnitSelectionController : MonoBehaviour
         GridUnit[] allUnits = FindObjectsByType<GridUnit>(FindObjectsSortMode.None);
         foreach (GridUnit otherUnit in allUnits)
         {
-            if (otherUnit != null && otherUnit != unit &&
+            if (otherUnit != null && otherUnit != selectedUnit &&
                 field.TryGetCell(otherUnit.transform.position, out Vector2Int occupiedCell))
             {
                 blockedCells.Add(occupiedCell);
             }
         }
 
-        field.ShowMovementRange(unit.transform.position, movementRange, blockedCells);
-        RefreshUI();
+        field.ShowMovementRange(selectedUnit.transform.position, movementRange, blockedCells);
     }
 
     private IEnumerator MoveSelectedUnit(IReadOnlyList<Vector2Int> path)
@@ -318,7 +360,7 @@ public sealed class UnitSelectionController : MonoBehaviour
         }
 
         isMoving = false;
-        CancelUnitSelection();
+        RefreshSelectedUnitMovementRange();
         RefreshUI();
 
         if (endTurnQueued)
@@ -401,6 +443,11 @@ public sealed class UnitSelectionController : MonoBehaviour
             unitStatusPanelGroup.blocksRaycasts = isPlayerTurn && !isMoving;
         }
 
+        if (unitSelectionDetailView != null)
+        {
+            unitSelectionDetailView.Refresh(selectedUnit, isPlayerTurn, isPlayerTurn && !isMoving);
+        }
+
         if (unitStatusViews == null)
         {
             return;
@@ -445,6 +492,11 @@ public sealed class UnitSelectionController : MonoBehaviour
         Vector3 visualCenter = selectedUnit.transform.position + Vector3.up * (GridUnit.HeightMeters * 0.5f);
         fieldCameraPan.FocusOn(visualCenter);
         return true;
+    }
+
+    public void ClearSelectedCard()
+    {
+        ClearCardSelection();
     }
 
     private void BindSelectionUI()
@@ -531,6 +583,6 @@ public sealed class UnitSelectionController : MonoBehaviour
     private void ClearAllSelections()
     {
         CancelUnitSelection();
-        ClearCardSelection();
+        ClearSelectedCard();
     }
 }
